@@ -479,6 +479,11 @@ class _RssTabPageState extends ConsumerState<RssTabPage> {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      elevation: 1,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: InkWell(
         onTap: () {
           final encoded = Uri.encodeQueryComponent(url);

@@ -5,11 +5,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/colors.dart';
 import '../../core/providers.dart';
 import '../../core/services/source_validation_service.dart';
+import '../../core/widgets/safe_setstate.dart';
 import '../../src/rust/api.dart' as rust_api;
 
 /// `@visibleForTesting` — 让 widget test 能直接弹出 [`_LiveTestDialog`] 而不必
@@ -48,71 +48,28 @@ class SourcePage extends ConsumerStatefulWidget {
 class _SourcePageState extends ConsumerState<SourcePage> {
   bool _selectMode = false;
   final Set<String> _selectedIds = {};
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final sourcesAsync = ref.watch(allSourcesProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: _selectMode ? Text('已选 ${_selectedIds.length} 项') : const Text('书源管理'),
-        leading: _selectMode
-            ? IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: _exitSelectMode,
-              )
-            : null,
-        actions: _selectMode
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.select_all),
-                  tooltip: '全选',
-                  onPressed: _selectAll,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.deselect),
-                  tooltip: '取消全选',
-                  onPressed: () => setState(() => _selectedIds.clear()),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  tooltip: '删除选中',
-                  onPressed: _selectedIds.isEmpty ? null : () => _deleteSelected(context),
-                ),
-              ]
-            : [
-                IconButton(
-                  icon: const Icon(Icons.file_upload_outlined),
-                  tooltip: '导出书源 JSON',
-                  onPressed: () => _showExportDialog(context),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.file_download_outlined),
-                  tooltip: '粘贴 JSON 导入',
-                  onPressed: () => _showImportDialog(context),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.folder_open),
-                  tooltip: '从文件导入',
-                  onPressed: () => _importFromFile(context),
-                ),
-                // 批次 20 (05-19): QR 扫码导入。补充入口，原导入按钮保留。
-                IconButton(
-                  icon: const Icon(Icons.qr_code_scanner),
-                  tooltip: '扫码导入',
-                  onPressed: () => context.push('/qr-scan'),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () => ref.invalidate(allSourcesProvider),
-                ),
-              ],
-      ),
+      appBar: _selectMode ? _buildSelectAppBar() : _buildNormalAppBar(),
       body: sourcesAsync.when(
         data: (sources) => _buildSourceList(context, sources),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
+      bottomNavigationBar:
+          _selectMode ? _buildBottomActionBar(context) : null,
       floatingActionButton: _selectMode
           ? null
           : FloatingActionButton(
@@ -122,45 +79,337 @@ class _SourcePageState extends ConsumerState<SourcePage> {
     );
   }
 
+  AppBar _buildNormalAppBar() {
+    final cs = Theme.of(context).colorScheme;
+    return AppBar(
+      titleSpacing: 0,
+      title: Container(
+        height: 44,
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            Icon(Icons.search, size: 20, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                style: TextStyle(fontSize: 15, color: cs.onSurface),
+                decoration: InputDecoration(
+                  hintText: '搜索书源',
+                  hintStyle: TextStyle(
+                    fontSize: 15,
+                    color: cs.onSurfaceVariant.withAlpha(0x99),
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                onChanged: (v) => safeSetState(() => _searchQuery = v),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.sort_by_alpha),
+          tooltip: '排序',
+          onPressed: () => ref.invalidate(allSourcesProvider),
+        ),
+        IconButton(
+          icon: const Icon(Icons.filter_list),
+          tooltip: '筛选',
+          onPressed: () => ref.invalidate(allSourcesProvider),
+        ),
+        IconButton(
+          icon: const Icon(Icons.file_upload_outlined),
+          tooltip: '导入',
+          onPressed: () => _showImportDialog(context),
+        ),
+        IconButton(
+          icon: const Icon(Icons.more_vert),
+          tooltip: '更多',
+          onPressed: () => _showMoreMenu(context),
+        ),
+      ],
+    );
+  }
+
+  AppBar _buildSelectAppBar() {
+    return AppBar(
+      title: Text('已选 ${_selectedIds.length} 项'),
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        onPressed: _exitSelectMode,
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.select_all),
+          tooltip: '全选',
+          onPressed: _selectAll,
+        ),
+        IconButton(
+          icon: const Icon(Icons.deselect),
+          tooltip: '取消全选',
+          onPressed: () => setState(() => _selectedIds.clear()),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomActionBar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final total = ref.read(allSourcesProvider).valueOrNull?.length ?? 0;
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        border: Border(top: BorderSide(color: cs.outlineVariant.withAlpha(0x40))),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () {
+              if (_selectedIds.length == total) {
+                _selectedIds.clear();
+              } else {
+                _selectAll();
+              }
+              setState(() {});
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _selectedIds.length == total && total > 0
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                  size: 20,
+                  color: cs.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '全选 ($_selectedIds.length/$total)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () {},
+                  child: const Text('反选', style: TextStyle(fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: _selectedIds.isEmpty
+                      ? null
+                      : () => _deleteSelected(context),
+                  child: Text('删除',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _selectedIds.isEmpty
+                            ? cs.onSurfaceVariant.withAlpha(0x60)
+                            : cs.onSurfaceVariant,
+                      )),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {},
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMoreMenu(BuildContext context) {
+    showMenu<String>(
+      context: context,
+      position: const RelativeRect.fromLTRB(1000, 100, 0, 0),
+      items: [
+        PopupMenuItem(
+          value: 'export',
+          onTap: () => _showExportDialog(context),
+          child: const Row(
+            children: [
+              Icon(Icons.file_upload_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('导出书源 JSON', style: TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'import_file',
+          onTap: () => _importFromFile(context),
+          child: const Row(
+            children: [
+              Icon(Icons.folder_open, size: 20),
+              SizedBox(width: 12),
+              Text('从文件导入', style: TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'import_paste',
+          onTap: () => _showImportDialog(context),
+          child: const Row(
+            children: [
+              Icon(Icons.content_paste, size: 20),
+              SizedBox(width: 12),
+              Text('粘贴 JSON 导入', style: TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSourceList(BuildContext context, List<Map<String, dynamic>> sources) {
+    final filtered = _searchQuery.isEmpty
+        ? sources
+        : sources.where((s) {
+            final name = (s['name'] as String?)?.toLowerCase() ?? '';
+            return name.contains(_searchQuery.toLowerCase());
+          }).toList();
+
     if (sources.isEmpty) {
       return const Center(child: Text('暂无书源，点击右下角添加'));
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(8),
-      itemCount: sources.length,
+      padding: EdgeInsets.only(
+        left: 0, right: 0,
+        bottom: _selectMode ? 0 : 80,
+      ),
+      itemCount: filtered.length,
       itemBuilder: (context, index) {
-        final source = sources[index];
+        final source = filtered[index];
         final id = source['id'] is String ? source['id'] as String : '';
         final validId = id.isNotEmpty;
-
         final enabled = source['enabled'] == true;
-        final hasRules = source['rule_search'] != null || source['rule_toc'] != null || source['rule_content'] != null;
-        return Card(
-          margin: EdgeInsets.zero,
-          child: ListTile(
-            dense: true,
-            leading: _selectMode
-                ? Checkbox(
-                    value: validId && _selectedIds.contains(id),
-                    onChanged: validId ? (_) => _toggleSelect(id) : null,
-                  )
-                : Icon(
-                    enabled ? Icons.check_circle : Icons.cancel,
-                    color: enabled ? context.al.success : context.al.textSecondary,
+        final cs = Theme.of(context).colorScheme;
+
+        Widget leading;
+        if (_selectMode) {
+          leading = Checkbox(
+            value: validId && _selectedIds.contains(id),
+            onChanged: validId ? (_) => _toggleSelect(id) : null,
+          );
+        } else {
+          leading = const SizedBox(width: 24);
+        }
+
+        return InkWell(
+          onTap: validId
+              ? (_selectMode
+                  ? () => _toggleSelect(id)
+                  : () => _showSourceActions(context, source))
+              : null,
+          onLongPress:
+              _selectMode || !validId ? null : () => _enterSelectMode(id),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                leading,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              source['name'] as String? ?? '未知书源',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        source['url'] as String? ?? '',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-            title: Text(source['name'] ?? '未知书源'),
-            subtitle: Text(hasRules ? '${source['url'] ?? ''} (含规则)' : (source['url'] ?? '')),
-            trailing: _selectMode
-                ? null
-                : Switch(
+                ),
+                if (!_selectMode) ...[
+                  Switch(
                     value: enabled,
-                    onChanged: validId ? (val) => _toggleSource(id, val) : null,
+                    onChanged:
+                        validId ? (val) => _toggleSource(id, val) : null,
                   ),
-            onTap: validId ? (_selectMode
-                ? () => _toggleSelect(id)
-                : () => _showSourceActions(context, source)) : null,
-            onLongPress: _selectMode || !validId ? null : () => _enterSelectMode(id),
+                  const SizedBox(width: 4),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: enabled
+                          ? const Color(0xFF00C853)
+                          : cs.outlineVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(Icons.open_in_new,
+                        size: 20, color: cs.onSurfaceVariant),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () =>
+                        _showSourceActions(context, source),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(Icons.more_vert,
+                        size: 20, color: cs.onSurfaceVariant),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () =>
+                        _showSourceActions(context, source),
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },

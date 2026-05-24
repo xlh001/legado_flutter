@@ -88,6 +88,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
   int _updateTocTotal = 0;
   StreamSubscription<UpdateTocProgress>? _updateTocSub;
 
+  final LayerLink _menuLayerLink = LayerLink();
+  OverlayEntry? _menuOverlay;
+
   @override
   void initState() {
     super.initState();
@@ -127,6 +130,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
 
   @override
   void dispose() {
+    _menuOverlay?.remove();
     _updateTocSub?.cancel();
     super.dispose();
   }
@@ -144,6 +148,148 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
       error: (e, _) => _buildScaffold(context, const [], sortOrder),
       data: (groups) => _buildScaffold(context, groups, sortOrder),
     );
+  }
+
+  void _showMoreMenu(
+    BuildContext innerCtx,
+    List<_TabSpec> tabSpec,
+    int sortOrder,
+  ) {
+    _menuOverlay?.remove();
+    _menuOverlay = null;
+    final theme = Theme.of(innerCtx);
+    final colorScheme = theme.colorScheme;
+    final screenHeight = MediaQuery.of(innerCtx).size.height;
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          entry.remove();
+          _menuOverlay = null;
+        },
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Container(color: Colors.black26),
+            ),
+            CompositedTransformFollower(
+              link: _menuLayerLink,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(0, 8),
+              child: GestureDetector(
+                onTap: () {}, // absorb taps on the menu itself
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(16),
+                  color: colorScheme.surfaceContainerHigh,
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: screenHeight * 0.65,
+                      minWidth: 180,
+                      maxWidth: 240,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: _buildMenuItems(ctx, innerCtx,
+                            tabSpec, sortOrder, () {
+                          entry.remove();
+                          _menuOverlay = null;
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    _menuOverlay = entry;
+    Overlay.of(innerCtx).insert(entry);
+  }
+
+  List<Widget> _buildMenuItems(
+    BuildContext overlayCtx,
+    BuildContext pageCtx,
+    List<_TabSpec> tabSpec,
+    int sortOrder,
+    VoidCallback closeMenu,
+  ) {
+    Future<void> onSelect(String value) async {
+      closeMenu();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+
+      if (value == 'manage_groups') {
+        await showDialog(
+          context: pageCtx,
+          builder: (_) => const GroupManageDialog(),
+        );
+      } else if (value == 'import_local') {
+        await _onImportLocalBook(pageCtx);
+      } else if (value == 'cache_export') {
+        if (pageCtx.mounted) pageCtx.push('/downloads');
+      } else if (value == 'qr_scan') {
+        if (pageCtx.mounted) pageCtx.push('/qr-scan');
+      } else if (value == 'bookshelf_layout') {
+        await _showLayoutDialog(pageCtx);
+      } else if (value == 'export_bookshelf') {
+        await _onExportBookshelf(pageCtx);
+      } else if (value == 'update_toc') {
+        await _onUpdateToc(pageCtx, tabSpec, sortOrder);
+      } else if (value == 'add_remote') {
+        if (pageCtx.mounted) pageCtx.push('/remote-books');
+      } else if (value == 'bookshelf_manage') {
+        if (pageCtx.mounted) pageCtx.push('/bookshelf-manage');
+      } else if (value == 'add_url') {
+        await _onAddUrl(pageCtx);
+      } else if (value == 'import_bookshelf') {
+        await _onImportBookshelf(pageCtx);
+      } else if (value == 'sort') {
+        _showSortDialog(pageCtx);
+      }
+    }
+
+    final colorScheme = Theme.of(overlayCtx).colorScheme;
+    return [
+      _overlayMenuItem(overlayCtx, 'update_toc', Icons.refresh, '更新目录',
+          () => onSelect('update_toc')),
+      _overlayMenuItem(overlayCtx, 'import_local', Icons.note_add, '添加本地书',
+          () => onSelect('import_local')),
+      _overlayMenuItem(overlayCtx, 'add_remote', Icons.cloud_outlined, '添加远程书',
+          () => onSelect('add_remote')),
+      _overlayMenuItem(overlayCtx, 'add_url', Icons.link, '添加网络URL',
+          () => onSelect('add_url')),
+      _overlayMenuItem(overlayCtx, 'qr_scan', Icons.qr_code_scanner, '扫码导入',
+          () => onSelect('qr_scan')),
+      _overlayDivider(overlayCtx, colorScheme),
+      _overlayMenuItem(overlayCtx, 'bookshelf_manage', Icons.edit_note,
+          '书架管理', () => onSelect('bookshelf_manage')),
+      _overlayMenuItem(overlayCtx, 'cache_export', Icons.download_outlined,
+          '缓存/导出', () => onSelect('cache_export')),
+      _overlayDivider(overlayCtx, colorScheme),
+      _overlayMenuItem(overlayCtx, 'manage_groups', Icons.folder_outlined,
+          '分组管理', () => onSelect('manage_groups')),
+      _overlayMenuItem(overlayCtx, 'bookshelf_layout', Icons.dashboard_outlined,
+          '书架布局', () => onSelect('bookshelf_layout')),
+      _overlayMenuItem(overlayCtx, 'sort', Icons.sort, '书架排序',
+          () => onSelect('sort')),
+      _overlayMenuItem(overlayCtx, 'export_bookshelf', Icons.upload_file,
+          '导出书架', () => onSelect('export_bookshelf')),
+      _overlayMenuItem(overlayCtx, 'import_bookshelf',
+          Icons.file_download_outlined, '导入书架',
+          () => onSelect('import_bookshelf')),
+      _overlayDivider(overlayCtx, colorScheme),
+      _overlayDisabledMenuItem(
+          overlayCtx, Icons.article_outlined, '日志'),
+    ];
   }
 
   Widget _buildScaffold(BuildContext context,
@@ -171,8 +317,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
           title: Align(
             alignment: Alignment.centerLeft,
             child: TabBar(
-              isScrollable: false,
-              tabAlignment: TabAlignment.fill,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               indicatorSize: TabBarIndicatorSize.tab,
               indicator: UnderlineTabIndicator(
                 borderSide: BorderSide(
@@ -232,96 +378,15 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               tooltip: '搜索',
               onPressed: () => context.push('/search'),
             ),
-            // BATCH-27b: PopupMenu 包 Builder 让 onSelected 内的 context 能
-            // 命中 DefaultTabController（PopupMenuButton 自身已是 Scaffold
-            // 子节点 + DefaultTabController 子树，但 menu 触发的 context
-            // 是 PopupMenuButton 本身的 BuildContext，已能 of(context) 拿
-            // 到 controller —— 这里 Builder 主要是隔离 actions 列表外层
-            // context 让 _onUpdateToc 拿到 tab index 一定不空）。
             Builder(
-              builder: (innerCtx) => PopupMenuButton<String>(
-                tooltip: '更多',
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                elevation: 8,
-                offset: const Offset(0, 4),
-                color: Theme.of(innerCtx)
-                    .colorScheme
-                    .surfaceContainerHigh,
-                onSelected: (value) async {
-                  // BATCH-27a (05-22)：PopupMenu 严格按原 legado
-                  // `main_bookshelf.xml` 12 项 + flutter 自加「扫码导入」共
-                  // 13 项排布。6 项灰显占位（更新目录 / 添加远程书 /
-                  // 添加网络URL / 书架管理 / 导入书架 / 日志）走
-                  // `enabled: false` + 不写 onTap，对齐 BATCH-26b 决策
-                  // —— 灰显本身就是信号，不弹 SnackBar。新增真功能 2 项：
-                  // bookshelf_layout 弹 SimpleDialog 切「列表 / 网格」；
-                  // export_bookshelf 调 FRB 写 documents_dir/books.json。
-                  // BATCH-27b: 「更新目录」从灰显改可点 → _onUpdateToc。
-                  if (value == 'manage_groups') {
-                    await showDialog(
-                      context: innerCtx,
-                      builder: (_) => const GroupManageDialog(),
-                    );
-                  } else if (value == 'import_local') {
-                    // 批次 13 (05-19): 导入本地书。
-                    await _onImportLocalBook(innerCtx);
-                  } else if (value == 'cache_export') {
-                    // BATCH-26a (05-22): /downloads 退 tab 后入口移到此。
-                    if (innerCtx.mounted) innerCtx.push('/downloads');
-                  } else if (value == 'qr_scan') {
-                    // 批次 20 (05-19): QR 扫码导入。扫描结果由 qr_scan_page
-                    // 自己处理 + pop 后回到原页。
-                    if (innerCtx.mounted) innerCtx.push('/qr-scan');
-                  } else if (value == 'bookshelf_layout') {
-                    // BATCH-27a (05-22): 书架布局对话框（列表 / 网格）。
-                    await _showLayoutDialog(innerCtx);
-                  } else if (value == 'export_bookshelf') {
-                    // BATCH-27a (05-22): 导出书架 JSON 到 documents_dir。
-                    await _onExportBookshelf(innerCtx);
-                  } else if (value == 'update_toc') {
-                    // BATCH-27b (05-22): 当前 Tab books 批量刷目录。
-                    await _onUpdateToc(innerCtx, tabSpec, sortOrder);
-                  } else if (value == 'add_remote') {
-                    // BATCH-27c (05-22): 远程书浏览页（webdav 单 server
-                    // 最小可用版）。灰显占位 → 真功能跳 /remote-books。
-                    if (innerCtx.mounted) innerCtx.push('/remote-books');
-                  } else if (value == 'bookshelf_manage') {
-                    // BATCH-27d (05-22): 书架管理批量编辑页。
-                    if (innerCtx.mounted) innerCtx.push('/bookshelf-manage');
-                  } else if (value == 'add_url') {
-                    // BATCH-27e (05-22): 添加网络URL → _onAddUrl。
-                    await _onAddUrl(innerCtx);
-                  } else if (value == 'import_bookshelf') {
-                    // BATCH-27e (05-22): 导入书架 → _onImportBookshelf。
-                    await _onImportBookshelf(innerCtx);
-                  } else if (value == 'sort') {
-                    _showSortDialog(innerCtx);
-                  }
-                },
-                itemBuilder: (context) => [
-                  _menuItem('update_toc', Icons.refresh, '更新目录'),
-                  _menuItem('import_local', Icons.note_add, '添加本地书'),
-                  _menuItem('add_remote', Icons.cloud_outlined, '添加远程书'),
-                  _menuItem('add_url', Icons.link, '添加网络URL'),
-                  _menuItem('qr_scan', Icons.qr_code_scanner, '扫码导入'),
-                  const PopupMenuDivider(),
-                  _menuItem('bookshelf_manage', Icons.edit_note, '书架管理'),
-                  _menuItem('cache_export', Icons.download_outlined, '缓存/导出'),
-                  const PopupMenuDivider(),
-                  _menuItem('manage_groups', Icons.folder_outlined, '分组管理'),
-                  _menuItem('bookshelf_layout', Icons.dashboard_outlined, '书架布局'),
-                  _menuItem('sort', Icons.sort, '书架排序'),
-                  _menuItem('export_bookshelf', Icons.upload_file, '导出书架'),
-                  _menuItem('import_bookshelf', Icons.file_download_outlined, '导入书架'),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    enabled: false,
-                    value: 'log',
-                    child: _BookMenuRow(
-                        icon: Icons.article_outlined, label: '日志'),
-                  ),
-                ],
+              builder: (innerCtx) => CompositedTransformTarget(
+                link: _menuLayerLink,
+                child: IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: '更多',
+                  onPressed: () => _showMoreMenu(
+                    innerCtx, tabSpec, sortOrder),
+                ),
               ),
             ),
           ],
@@ -914,79 +979,80 @@ class _BookListView extends ConsumerWidget {
             ),
           ),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            // Cover: 80×120, aspect 2:3, rounded 12px
-            _buildListCover(context, book),
-            const SizedBox(width: 16),
-            // Info area (expanded) - reserve space for badge
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 40),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Title: 16px, w500, max 2 lines, ellipsis
-                    Text(
-                      name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: colorScheme.onSurface,
-                      ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Cover: 80×120, aspect 2:3, rounded 12px
+                _buildListCover(context, book),
+                const SizedBox(width: 16),
+                // Info area (expanded) - reserve space for badge
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 40),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        if (author.isNotEmpty)
+                          Row(
+                            children: [
+                              Icon(Icons.person,
+                                  size: 14, color: context.al.textSecondary),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  author,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.al.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (durTitle != null && durTitle.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(Icons.radio_button_unchecked,
+                                  size: 12, color: context.al.textSecondary),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  durTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.al.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    // Author row: person icon + author name
-                    if (author.isNotEmpty)
-                      Row(
-                        children: [
-                          Icon(Icons.person,
-                              size: 14, color: context.al.textSecondary),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              author,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: context.al.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    // Chapter rows: radio_button_unchecked icon + chapter title
-                    if (durTitle != null && durTitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(Icons.radio_button_unchecked,
-                              size: 12, color: context.al.textSecondary),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              durTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: context.al.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            // Progress badge: absolutely positioned on right side
+            // Progress badge: absolutely positioned on right side, vertically centered
             if (chapterCount > 0)
               Positioned(
                 right: 0,
@@ -994,8 +1060,8 @@ class _BookListView extends ConsumerWidget {
                 bottom: 0,
                 child: Center(
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 2),
                     decoration: BoxDecoration(
                       color: colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
@@ -1099,7 +1165,7 @@ class _BookListView extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 0.72,
+        childAspectRatio: 0.52,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
@@ -1515,10 +1581,32 @@ class _UrlImportDialogState extends State<_UrlImportDialog> {
 
 // ── Menu helpers ───────────────────────────────────────────────────
 
-PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
-  return PopupMenuItem(
-    value: value,
-    child: _BookMenuRow(icon: icon, label: label),
+Widget _overlayMenuItem(BuildContext ctx, String value, IconData icon,
+    String label, VoidCallback onTap) {
+  return InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: _BookMenuRow(icon: icon, label: label),
+    ),
+  );
+}
+
+Widget _overlayDivider(BuildContext ctx, ColorScheme cs) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+    child: Divider(height: 1, color: cs.outlineVariant),
+  );
+}
+
+Widget _overlayDisabledMenuItem(
+    BuildContext ctx, IconData icon, String label) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    child: Opacity(
+      opacity: 0.38,
+      child: _BookMenuRow(icon: icon, label: label),
+    ),
   );
 }
 

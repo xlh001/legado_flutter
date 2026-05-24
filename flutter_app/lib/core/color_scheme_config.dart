@@ -16,7 +16,7 @@ enum ColorSource {
 /// Persisted colour-configuration state.
 final ColorSchemeConfig _defaultConfig = const ColorSchemeConfig(
   source: ColorSource.dynamic_,
-  presetSeed: 0xFF1565C0,
+  presetSeed: 0xFF006A4D,
 );
 
 /// Riverpod provider that loads the persisted colour config on first access
@@ -94,7 +94,7 @@ class ColorSchemeConfigNotifier extends StateNotifier<ColorSchemeConfig> {
 
 /// The 12 Material You tonal-palette preset colours (values are ARGB).
 const presetSeedColors = <Color>[
-  Color(0xFF1565C0), // Blue
+  Color(0xFF006A4D), // Green (HTML design default)
   Color(0xFF00897B), // Teal
   Color(0xFF2E7D32), // Green
   Color(0xFF558B2F), // Light Green

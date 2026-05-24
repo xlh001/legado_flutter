@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/colors.dart';
 import '../../core/cover_cache.dart';
@@ -500,103 +501,170 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('搜索'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: FilterChip(
-              label: const Text('精确'),
-              selected: _precisionMode,
-              onSelected: (_) => _togglePrecisionMode(),
-              avatar: Icon(
-                _precisionMode
-                    ? Icons.youtube_searched_for
-                    : Icons.search_off,
-                size: 18,
-              ),
-            ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(),
+        ),
+        titleSpacing: 0,
+        title: Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(28),
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: '更多',
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            elevation: 8,
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            onSelected: (value) {
-              if (value == 'clear_history') _clearHistory();
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'clear_history',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_sweep, size: 20,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 14),
-                    const Text('清空历史', style: TextStyle(fontSize: 14)),
-                  ],
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Icon(Icons.search,
+                  size: 18, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  style: TextStyle(fontSize: 15, color: colorScheme.onSurface),
+                  decoration: InputDecoration(
+                    hintText: '搜索书名、作者',
+                    hintStyle: TextStyle(
+                      fontSize: 15,
+                      color: colorScheme.onSurfaceVariant.withAlpha(0x99),
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onSubmitted: (_) => _doSearch(),
                 ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      icon: const Icon(Icons.arrow_forward_ios),
+                      onPressed: () {},
+                      tooltip: '下一个',
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: '输入书名或作者',
-                filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  borderSide: BorderSide(
-                      color: Theme.of(context).colorScheme.primary, width: 2),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_loading)
-                      const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                    else
-                      IconButton(
-                          icon: const Icon(Icons.send), onPressed: _doSearch),
-                  ],
-                ),
-              ),
-              onSubmitted: (_) => _doSearch(),
+        ),
+        actions: [
+          Builder(
+            builder: (ctx) => PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: '更多',
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              elevation: 8,
+              color: colorScheme.surfaceContainerHigh,
+              onSelected: (value) => _onMenuSelected(value, ctx),
+              itemBuilder: (_) => _buildMenuItems(ctx, colorScheme),
             ),
           ),
-          Expanded(
-            child: _loading && _localResults.isEmpty && _onlineResults.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : _localResults.isEmpty && _onlineResults.isEmpty && !_loading
-                    ? _buildSearchHistory()
-                    : _buildResultsList(),
-          ),
         ],
       ),
+      body: _loading && _localResults.isEmpty && _onlineResults.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : _localResults.isEmpty && _onlineResults.isEmpty && !_loading
+              ? _buildSearchHistory()
+              : _buildResultsList(),
     );
+  }
+
+  void _onMenuSelected(String value, BuildContext ctx) {
+    switch (value) {
+      case 'toggle_precision':
+        _togglePrecisionMode();
+      case 'clear_history':
+        _clearHistory();
+      case 'source_manage':
+        ctx.push('/sources');
+      case 'multi_group':
+        // placeholder — 多分组/书源
+        break;
+      case _:
+        if (value.startsWith('source_')) {
+          // radio source selection handled in itemBuilder
+        }
+        break;
+    }
+  }
+
+  List<PopupMenuEntry<String>> _buildMenuItems(
+      BuildContext ctx, ColorScheme cs) {
+    final enabledSources = ref.read(allSourcesProvider).valueOrNull ?? [];
+    final items = <PopupMenuEntry<String>>[];
+
+    // 精准搜索 checkbox-style menu item
+    items.add(
+      PopupMenuItem(
+        value: 'toggle_precision',
+        child: _MenuCheckboxItem(
+          label: '精准搜索',
+          checked: _precisionMode,
+        ),
+      ),
+    );
+    items.add(const PopupMenuDivider());
+
+    // 书源管理 / 多分组书源
+    items.add(
+      PopupMenuItem(
+        value: 'source_manage',
+        child: _MenuTextItem(label: '书源管理'),
+      ),
+    );
+    items.add(
+      const PopupMenuItem(
+        value: 'multi_group',
+        enabled: false,
+        child: _MenuTextItem(label: '多分组/书源'),
+      ),
+    );
+    items.add(const PopupMenuDivider());
+
+    // 已启用书源 radio list
+    for (final s in enabledSources) {
+      final name = s['name'] as String? ?? '';
+      if (name.isEmpty) continue;
+      items.add(
+        PopupMenuItem(
+          value: 'source_${s['id'] ?? ''}',
+          child: _MenuRadioItem(
+            label: name,
+            // always unselected for now — radio selection is UX placeholder
+            selected: false,
+          ),
+        ),
+      );
+    }
+    items.add(const PopupMenuDivider());
+
+    // 清空历史 + 日志
+    items.add(
+      PopupMenuItem(
+        value: 'clear_history',
+        child: _MenuTextItem(label: '清空历史'),
+      ),
+    );
+    items.add(
+      const PopupMenuItem(
+        value: 'log',
+        enabled: false,
+        child: _MenuTextItem(label: '日志'),
+      ),
+    );
+
+    return items;
   }
 
   /// 双 Section 结果列表 — 本地书架 + 在线书源。
@@ -740,55 +808,73 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   Widget _buildSearchHistory() {
+    final colorScheme = Theme.of(context).colorScheme;
     if (_searchHistory.isEmpty) {
       return const Center(child: Text('输入关键词搜索书籍'));
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Text(
-                '搜索历史',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: _clearHistory,
-                child: Text(
-                  '清除',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
+            child: Row(
+              children: [
+                Text(
+                  '搜索历史',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-            ],
+                const Spacer(),
+                GestureDetector(
+                  onTap: _clearHistory,
+                  child: Text(
+                    '清除',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _searchHistory.map((term) {
-                return ActionChip(
-                  label: Text(term, style: const TextStyle(fontSize: 13)),
-                  avatar: const Icon(Icons.history, size: 16),
-                  onPressed: () {
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _searchHistory.map((term) {
+              return Material(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
                     _searchCtrl.text = term;
                     _doSearch();
                   },
-                );
-              }).toList(),
-            ),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Text(
+                      term,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -942,6 +1028,90 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// MD3-style menu checkbox item matching HTML search menu.
+class _MenuCheckboxItem extends StatelessWidget {
+  final String label;
+  final bool checked;
+
+  const _MenuCheckboxItem({required this.label, required this.checked});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 13)),
+        ),
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            color: checked ? cs.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: checked ? cs.primary : cs.onSurfaceVariant,
+              width: 2,
+            ),
+          ),
+          child: checked
+              ? Icon(Icons.check, size: 14, color: cs.onPrimary)
+              : null,
+        ),
+      ],
+    );
+  }
+}
+
+/// MD3-style menu text-only item.
+class _MenuTextItem extends StatelessWidget {
+  final String label;
+
+  const _MenuTextItem({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(label, style: const TextStyle(fontSize: 13));
+  }
+}
+
+/// MD3-style menu radio item.
+class _MenuRadioItem extends StatelessWidget {
+  final String label;
+  final bool selected;
+
+  const _MenuRadioItem({required this.label, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 13)),
+        ),
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? cs.primary : cs.onSurfaceVariant,
+              width: 2,
+            ),
+          ),
+          child: selected
+              ? Center(
+                  child: Icon(Icons.check,
+                      size: 12, color: cs.primary),
+                )
+              : null,
+        ),
+      ],
     );
   }
 }

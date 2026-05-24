@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AppTheme {
   AppTheme._();
 
-  static const Color _defaultSeed = Color(0xFF1565C0);
+  static const Color _defaultSeed = Color(0xFF006A4D);
 
   // ── Factory: build ThemeData from a ColorScheme ──────────────────
 

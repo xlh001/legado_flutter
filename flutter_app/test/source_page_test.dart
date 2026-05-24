@@ -35,7 +35,7 @@ void main() {
     expect(find.text('加载失败: Connection failed'), findsOneWidget);
   });
 
-  testWidgets('shows app bar title', (WidgetTester tester) async {
+  testWidgets('shows search bar in app bar', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -45,7 +45,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('书源管理'), findsOneWidget);
+    // AppBar now has a search bar instead of a title text
+    expect(find.byIcon(Icons.search), findsWidgets);
+    expect(find.byIcon(Icons.more_vert), findsOneWidget);
   });
 
   testWidgets('shows empty message when no sources', (WidgetTester tester) async {
@@ -61,7 +63,7 @@ void main() {
     expect(find.text('暂无书源，点击右下角添加'), findsOneWidget);
   });
 
-  testWidgets('shows refresh button', (WidgetTester tester) async {
+  testWidgets('shows action buttons in app bar', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -71,7 +73,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.refresh), findsOneWidget);
+    // New AppBar has sort, filter, import, more_vert buttons
+    expect(find.byIcon(Icons.sort_by_alpha), findsOneWidget);
+    expect(find.byIcon(Icons.filter_list), findsOneWidget);
+    expect(find.byIcon(Icons.more_vert), findsOneWidget);
   });
 
   testWidgets('shows FAB with add icon', (WidgetTester tester) async {
@@ -105,7 +110,7 @@ void main() {
     expect(find.text('https://a.com'), findsOneWidget);
     expect(find.text('Source B'), findsOneWidget);
     expect(find.text('https://b.com'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
+    expect(find.byType(Switch), findsNWidgets(2));
   });
 
   testWidgets('shows disabled source with cancel icon', (WidgetTester tester) async {
@@ -122,7 +127,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Disabled'), findsOneWidget);
-    expect(find.byIcon(Icons.cancel), findsOneWidget);
     expect(find.byType(Switch), findsOneWidget);
   });
 

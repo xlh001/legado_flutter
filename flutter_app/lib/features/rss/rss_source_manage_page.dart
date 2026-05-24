@@ -322,12 +322,13 @@ class _RssSourceManagePageState extends ConsumerState<RssSourceManagePage> {
 
   Widget _buildSectionHeader(BuildContext context, String name, int count) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Text(
         '$name ($count)',
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
               color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.5,
             ),
       ),
     );

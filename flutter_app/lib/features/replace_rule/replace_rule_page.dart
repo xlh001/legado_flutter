@@ -29,9 +29,13 @@ class _ReplaceRulePageState extends ConsumerState<ReplaceRulePage> {
   void initState() {
     super.initState();
     // R24: 提示 schema 已升级、原"作用范围"信息已重置为全局。
+    // Provider 修改必须在 widget build 之外 — 用 Future.microtask 延迟到下一微任务。
     final shown = ref.read(_r24NoticeShownProvider);
     if (!shown) {
-      ref.read(_r24NoticeShownProvider.notifier).state = true;
+      Future.microtask(() {
+        if (!mounted) return;
+        ref.read(_r24NoticeShownProvider.notifier).state = true;
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -40,7 +44,7 @@ class _ReplaceRulePageState extends ConsumerState<ReplaceRulePage> {
               '替换规则功能已升级（v10）。原"作用范围"信息已重置为全局，'
               '可在编辑规则里填写书名或书源 URL 重新限定。',
             ),
-            duration: Duration(seconds: 8),
+            duration: Duration(seconds: 3),
           ),
         );
       });

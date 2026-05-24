@@ -32,8 +32,7 @@ import 'state/reader_search_controller.dart' as rsc;
 import 'widgets/reader_settings_sheet.dart';
 import 'widgets/reader_search_bar.dart';
 import 'widgets/reader_tts_bar.dart';
-import 'widgets/reader_top_bar.dart';
-import 'widgets/reader_bottom_bar.dart';
+import 'widgets/reader_control_overlay.dart';
 import 'widgets/long_press_action_sheet.dart';
 
 class _LoadedChapter {
@@ -1925,123 +1924,191 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     // [handleReaderKeyEvent] 拦截转化为翻页。autofocus = true 保证一进
     // reader 立即获焦，不需要用户先点屏幕。控件可见时（菜单 / 设置 sheet）
     // 不拦截 — 见 [handleReaderKeyEvent] 内的 controlsVisible 守卫。
-    return Focus(
-      focusNode: _readerFocusNode,
-      autofocus: true,
-      onKeyEvent: (node, event) => handleReaderKeyEvent(
-        event: event,
-        settings: _settings,
-        controlsVisible: _controlsVisible,
-        ttsSpeaking: _tts.isSpeaking,
-        // 批次 3 (05-18): 复用 _doTapPrev / _doTapNext，与 onTapUp / 物理键
-        // 走同一条翻页 helper，避免两路 fallback 链漂移。
-        onPrev: _doTapPrev,
-        onNext: _doTapNext,
-      ),
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarIconBrightness:
-            _settings.nightMode ? Brightness.light : Brightness.dark,
-        statusBarColor: Colors.transparent,
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bgColor,
-          image: settings.backgroundImagePath != null
-              ? DecorationImage(
-                  image: FileImage(File(settings.backgroundImagePath!)),
-                  fit: BoxFit.cover,
-                )
-              : null,
+    //
+    // 05-24 (html-ui): 添加 PopScope 拦截 Android 系统返回键，当控件覆盖层
+    // 可见时关闭覆盖层而非退出 reader。
+    return PopScope(
+      canPop: !_controlsVisible,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _controlsVisible) {
+          _toggleControls();
+        }
+      },
+      child: Focus(
+        focusNode: _readerFocusNode,
+        autofocus: true,
+        onKeyEvent: (node, event) => handleReaderKeyEvent(
+          event: event,
+          settings: _settings,
+          controlsVisible: _controlsVisible,
+          ttsSpeaking: _tts.isSpeaking,
+          // 批次 3 (05-18): 复用 _doTapPrev / _doTapNext，与 onTapUp / 物理键
+          // 走同一条翻页 helper，避免两路 fallback 链漂移。
+          onPrev: _doTapPrev,
+          onNext: _doTapNext,
         ),
-        child: SafeArea(
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle(
+          statusBarIconBrightness:
+              _settings.nightMode ? Brightness.light : Brightness.dark,
+          statusBarColor: Colors.transparent,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: bgColor,
+            image: settings.backgroundImagePath != null
+                ? DecorationImage(
+                    image: FileImage(File(settings.backgroundImagePath!)),
+                    fit: BoxFit.cover,
+                  )
+                : null,
+          ),
           child: Column(
             children: [
-              if (showInfoBars) _buildReadingInfoHeader(settings),
+              if (showInfoBars)
+                SafeArea(
+                  bottom: false,
+                  child: _buildReadingInfoHeader(settings),
+                ),
               Expanded(
                 child: Stack(
                   children: [
-                    IgnorePointer(
-                      ignoring: contentLocked,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapUp: (details) {
-                          // 批次 3 (05-18): 3×3 点击区域配置。
-                          // 滚动模式（!isPage）保持单一中央点击切 menu 的旧行为，
-                          // 因为滚动模式下没有"翻页"语义可分派。
-                          if (!isPage) {
-                            _toggleControls();
-                            return;
-                          }
-                          // 用本 GestureDetector 自身的 RenderBox 尺寸（与
-                          // details.localPosition 同坐标系）；理论上不应为 null，
-                          // 兜底到 MediaQuery.size 仍是合理 fallback。
-                          final box = context.findRenderObject() as RenderBox?;
-                          final size =
-                              box?.size ?? MediaQuery.of(context).size;
-                          final idx = tapZoneIndex(
-                            details.localPosition.dx,
-                            details.localPosition.dy,
-                            size.width,
-                            size.height,
-                          );
-                          final action =
-                              resolveTapAction(_settings.tapZones, idx);
-                          switch (action) {
-                            case TapZoneAction.prevPage:
-                              _doTapPrev();
-                              break;
-                            case TapZoneAction.nextPage:
-                              _doTapNext();
-                              break;
-                            case TapZoneAction.showMenu:
+                    SafeArea(
+                      top: !showInfoBars,
+                      child: IgnorePointer(
+                        ignoring: contentLocked,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (details) {
+                            // 批次 3 (05-18): 3×3 点击区域配置。
+                            // 滚动模式（!isPage）保持单一中央点击切 menu 的旧行为，
+                            // 因为滚动模式下没有"翻页"语义可分派。
+                            if (!isPage) {
                               _toggleControls();
-                              break;
-                            case TapZoneAction.nothing:
-                              break;
-                          }
-                        },
-                        // 批次 5 (05-18): 长按文字菜单 MVP — 整页粒度
-                        // （不动 ContentPagePainter Canvas 渲染，避免破坏
-                        // simulation 翻页 ui.Picture 预渲染）。控件可见时
-                        // 不响应避免与设置 sheet 冲突。
-                        onLongPressStart: (details) {
-                          if (!_settings.enableLongPressMenu) return;
-                          if (_controlsVisible) return;
-                          _showLongPressActionSheet();
-                        },
-                        child: NotificationListener<OverscrollNotification>(
-                          onNotification:
-                              isContinuous ? (_) => true : _onOverscroll,
-                          child: isPage
-                              ? _buildPageBody(settings)
-                              : _buildContinuousBody(settings),
+                              return;
+                            }
+                            // 用本 GestureDetector 自身的 RenderBox 尺寸（与
+                            // details.localPosition 同坐标系）；理论上不应为 null，
+                            // 兜底到 MediaQuery.size 仍是合理 fallback。
+                            final box = context.findRenderObject() as RenderBox?;
+                            final size =
+                                box?.size ?? MediaQuery.of(context).size;
+                            final idx = tapZoneIndex(
+                              details.localPosition.dx,
+                              details.localPosition.dy,
+                              size.width,
+                              size.height,
+                            );
+                            final action =
+                                resolveTapAction(_settings.tapZones, idx);
+                            switch (action) {
+                              case TapZoneAction.prevPage:
+                                _doTapPrev();
+                                break;
+                              case TapZoneAction.nextPage:
+                                _doTapNext();
+                                break;
+                              case TapZoneAction.showMenu:
+                                _toggleControls();
+                                break;
+                              case TapZoneAction.nothing:
+                                break;
+                            }
+                          },
+                          // 批次 5 (05-18): 长按文字菜单 MVP — 整页粒度
+                          // （不动 ContentPagePainter Canvas 渲染，避免破坏
+                          // simulation 翻页 ui.Picture 预渲染）。控件可见时
+                          // 不响应避免与设置 sheet 冲突。
+                          onLongPressStart: (details) {
+                            if (!_settings.enableLongPressMenu) return;
+                            if (_controlsVisible) return;
+                            _showLongPressActionSheet();
+                          },
+                          child: NotificationListener<OverscrollNotification>(
+                            onNotification:
+                                isContinuous ? (_) => true : _onOverscroll,
+                            child: isPage
+                                ? _buildPageBody(settings)
+                                : _buildContinuousBody(settings),
+                          ),
                         ),
                       ),
                     ),
-                    if (contentLocked)
-                      Positioned.fill(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _controlsVisible ? _toggleControls : () {},
-                        ),
+                    // 05-24 (html-ui): 控件覆盖层 — 不在 SafeArea 内，覆盖全屏
+                      // 替换原有分离的 reader_top_bar + reader_bottom_bar + contentLocked 挡板
+                      // 三段式结构。采用 AnimatedOpacity 淡入淡出（250ms）匹配 HTML 过渡。
+                      ReaderControlOverlay(
+                        settings: settings,
+                        bookName: _bookName,
+                        currentChapterTitle: _currentIndex < chapters.length
+                            ? (chapters[_currentIndex]['title'] as String? ?? '')
+                            : '',
+                        sourceName: _sourceName,
+                        sourceUrl: _sourceUrl,
+                        chapterUrl: _chapterUrl,
+                        hasBookmark: _hasBookmarkForChapter,
+                        chapterCount: chapters.length,
+                        currentIndex: _currentIndex,
+                        sliderValue: _sliderValue,
+                        hasPrev: hasPrev,
+                        hasNext: hasNext,
+                        isAutoScrolling: _isAutoScrolling,
+                        isNightMode: _settings.nightMode,
+                        isVisible: _controlsVisible,
+                        onBack: () => context.pop(),
+                        onChangeSource: () {
+                          _toggleControls();
+                          _showChangeSourceDialog(context);
+                        },
+                        onRefreshChapter: _refreshChapter,
+                        onStartDownload: () {
+                          _toggleControls();
+                          _startDownload(context);
+                        },
+                        onToggleBookmark: () {
+                          _toggleControls();
+                          _toggleBookmark();
+                        },
+                        onClose: _toggleControls,
+                        onSliderChanged: (v) =>
+                            setState(() => _sliderValue = v),
+                        onSliderChangeEnd: (targetIndex) {
+                          setState(() {
+                            _sliderValue = null;
+                            _currentIndex = targetIndex;
+                          });
+                          _navigateToChapter(targetIndex, chapters);
+                        },
+                        onPrevChapter: _goToPrevChapter,
+                        onNextChapter: _goToNextChapter,
+                        onStartSearch: _startSearch,
+                        onToggleAutoScroll: () {
+                          _toggleControls();
+                          _toggleAutoScroll();
+                        },
+                        onToggleNightMode: _toggleNightMode,
+                        onOpenReplaceRules: () {
+                          _toggleControls();
+                          context.push('/replace-rules');
+                        },
+                        onShowDirectory: _showDirectorySheet,
+                        onStartTts: () {
+                          _toggleControls();
+                          _startTts();
+                        },
+                        onShowReaderSettings: _showReaderSettings,
                       ),
-                    if (_controlsVisible)
-                      _buildTopControls(context, chapters, hasPrev, hasNext),
-                    if (_controlsVisible)
-                      _buildBottomControls(
-                          context, chapters, hasPrev, hasNext, settings),
-                    if (_isSpeaking) _buildTtsBar(),
-                    if (_isSearching) _buildSearchBar(),
-                  ],
+                      if (_isSpeaking) _buildTtsBar(),
+                      if (_isSearching) _buildSearchBar(),
+                    ],
+                  ),
                 ),
-              ),
-              if (showInfoBars) _buildReadingInfoFooter(chapters, settings),
-            ],
+                if (showInfoBars) _buildReadingInfoFooter(chapters, settings),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -2896,80 +2963,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       onCycleSpeed: _cycleTtsSpeed,
       onShowSettings: _showReaderSettings,
       onStop: _stopTts,
-    );
-  }
-
-  Widget _buildTopControls(BuildContext context,
-      List<Map<String, dynamic>> chapters, bool hasPrev, bool hasNext) {
-    final chapterTitle = _currentIndex < chapters.length
-        ? (chapters[_currentIndex]['title'] as String? ?? '')
-        : '';
-    return ReaderTopBar(
-      settings: _settings,
-      bookName: _bookName,
-      currentChapterTitle: chapterTitle,
-      sourceName: _sourceName,
-      sourceUrl: _sourceUrl,
-      chapterUrl: _chapterUrl,
-      hasBookmark: _hasBookmarkForChapter,
-      onBack: () => context.pop(),
-      onChangeSource: () {
-        _toggleControls();
-        _showChangeSourceDialog(context);
-      },
-      onRefreshChapter: _refreshChapter,
-      onStartDownload: () {
-        _toggleControls();
-        _startDownload(context);
-      },
-      onToggleBookmark: () {
-        _toggleControls();
-        _toggleBookmark();
-      },
-    );
-  }
-
-  Widget _buildBottomControls(
-      BuildContext context,
-      List<Map<String, dynamic>> chapters,
-      bool hasPrev,
-      bool hasNext,
-      ReaderSettings settings) {
-    return ReaderBottomBar(
-      settings: settings,
-      chapterCount: chapters.length,
-      currentIndex: _currentIndex,
-      sliderValue: _sliderValue,
-      hasPrev: hasPrev,
-      hasNext: hasNext,
-      isAutoScrolling: _isAutoScrolling,
-      isNightMode: _settings.nightMode,
-      onSliderChanged: (v) => setState(() => _sliderValue = v),
-      onSliderChangeEnd: (targetIndex) {
-        setState(() {
-          _sliderValue = null;
-          _currentIndex = targetIndex;
-        });
-        _navigateToChapter(targetIndex, chapters);
-      },
-      onPrevChapter: _goToPrevChapter,
-      onNextChapter: _goToNextChapter,
-      onStartSearch: _startSearch,
-      onToggleAutoScroll: () {
-        _toggleControls();
-        _toggleAutoScroll();
-      },
-      onToggleNightMode: _toggleNightMode,
-      onOpenReplaceRules: () {
-        _toggleControls();
-        context.push('/replace-rules');
-      },
-      onShowDirectory: _showDirectorySheet,
-      onStartTts: () {
-        _toggleControls();
-        _startTts();
-      },
-      onShowReaderSettings: _showReaderSettings,
     );
   }
 

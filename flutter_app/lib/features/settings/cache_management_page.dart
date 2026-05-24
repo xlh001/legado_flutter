@@ -251,6 +251,11 @@ class _CacheManagementPageState extends ConsumerState<CacheManagementPage> {
         Padding(
           padding: const EdgeInsets.all(12),
           child: Card(
+            elevation: 1,
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                   vertical: 16, horizontal: 16),

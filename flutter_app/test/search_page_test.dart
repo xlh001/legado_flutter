@@ -19,16 +19,19 @@ void main() {
     );
   }
 
-  testWidgets('SearchPage shows app bar title', (WidgetTester tester) async {
+  testWidgets('SearchPage shows back button in app bar', (WidgetTester tester) async {
     await tester.pumpWidget(buildSearchPage());
     await tester.pumpAndSettle();
-    expect(find.text('搜索'), findsOneWidget);
+    // 05-24 HTML alignment: AppBar has back arrow instead of title text
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.text('搜索'), findsNothing);
   });
 
-  testWidgets('SearchPage shows hint text in input field', (WidgetTester tester) async {
+  testWidgets('SearchPage shows hint text in search bar', (WidgetTester tester) async {
     await tester.pumpWidget(buildSearchPage());
     await tester.pumpAndSettle();
-    expect(find.text('输入书名或作者'), findsOneWidget);
+    // 05-24 HTML alignment: search bar in AppBar with updated hint
+    expect(find.text('搜索书名、作者'), findsOneWidget);
   });
 
   testWidgets('SearchPage shows empty state message', (WidgetTester tester) async {
@@ -37,42 +40,12 @@ void main() {
     expect(find.text('输入关键词搜索书籍'), findsOneWidget);
   });
 
-  testWidgets('SearchPage shows search icon prefix', (WidgetTester tester) async {
+  testWidgets('SearchPage shows search bar and more_vert menu in app bar', (WidgetTester tester) async {
     await tester.pumpWidget(buildSearchPage());
     await tester.pumpAndSettle();
-    // Task X3 后 AppBar action 改用 FilterChip + Icons.search_off / youtube_searched_for，
-    // TextField prefixIcon 仍是 Icons.search。所以 Icons.search 默认状态下应该
-    // 只剩 1 个（输入框 prefix），AppBar 那个 +1 已迁出。
-    expect(find.byIcon(Icons.search), findsOneWidget);
-  });
-
-  testWidgets('SearchPage AppBar precision toggle defaults to fuzzy mode', (WidgetTester tester) async {
-    await tester.pumpWidget(buildSearchPage());
-    await tester.pumpAndSettle();
-    // Task X3 — AppBar action 改用 FilterChip：默认 selected=false，avatar 显示
-    // Icons.search_off。
-    final filterChip = tester.widget<FilterChip>(find.byType(FilterChip));
-    expect(filterChip.selected, isFalse);
-    expect(find.byIcon(Icons.search_off), findsOneWidget);
-    expect(find.byIcon(Icons.youtube_searched_for), findsNothing);
-  });
-
-  testWidgets('SearchPage AppBar precision toggle flips to precision mode on tap', (WidgetTester tester) async {
-    await tester.pumpWidget(buildSearchPage());
-    await tester.pumpAndSettle();
-    // Task X3 — 点击 FilterChip 翻转 selected，avatar 切到 Icons.youtube_searched_for。
-    await tester.tap(find.byType(FilterChip));
-    await tester.pumpAndSettle();
-    final filterChip = tester.widget<FilterChip>(find.byType(FilterChip));
-    expect(filterChip.selected, isTrue);
-    expect(find.byIcon(Icons.youtube_searched_for), findsOneWidget);
-    expect(find.byIcon(Icons.search_off), findsNothing);
-  });
-
-  testWidgets('SearchPage shows send button', (WidgetTester tester) async {
-    await tester.pumpWidget(buildSearchPage());
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.send), findsOneWidget);
+    // 05-24 HTML alignment: search icon in search bar + more_vert in AppBar actions
+    expect(find.byIcon(Icons.search), findsWidgets);
+    expect(find.byIcon(Icons.more_vert), findsOneWidget);
   });
 
   testWidgets('SearchPage does not crash when disposed during async offline search', (WidgetTester tester) async {
@@ -94,8 +67,10 @@ void main() {
     await tester.enterText(find.byType(TextField), 'test');
     await tester.pumpAndSettle();
 
-    // Trigger search (default offline mode) — enters await ref.read(dbInitializedProvider.future)
-    await tester.tap(find.byIcon(Icons.send));
+    // Trigger search via onSubmitted of TextField
+    await tester.enterText(find.byType(TextField), 'test');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     // Search is now suspended on the hanging dbInitializedProvider future
 
@@ -141,10 +116,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 第一次搜索：tap send 按钮触发 _doSearch
+    // 第一次搜索：用 TextField onSubmitted 触发 _doSearch
     await tester.enterText(find.byType(TextField), 'A');
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.send));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
 
     final state = tester.state<State<SearchPage>>(find.byType(SearchPage));

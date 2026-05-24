@@ -196,6 +196,11 @@ This is acceptable because the extension is a thin syntactic wrapper. New `// ig
 | `record['x'] = newValue` 原地修改 list-of-maps 元素 | 列表上多个 caller 持原 record 引用时 mutation aliasing；用 `_records = List.of(_records)..[idx] = {...record, 'x': newValue}` immutable update。 | BATCH-21 (F-W2B-014) |
 | 多 future 调用入口缺 seq token | 用户连续触发同一 async action（搜索、刷新）时旧 future 后完成会"幽灵"覆盖新结果；加 `int _xxxSeq` 自增 token + 每个 await 后 `seq == _xxxSeq` 校验 + finally 内同样校验。 | BATCH-21 (F-W2B-019) |
 | TabBarView children 直接 `[for t in _tabs _buildXxx(...)]` method 返回 | 父 setState 让所有 tab 同时 rebuild + 切走的 tab 丢 scroll position；抽 `_XxxTabView` `StatefulWidget` + `AutomaticKeepAliveClientMixin`，build 内调 `super.build(context)`。 | BATCH-21 (F-W2B-013) |
+| `ref.read(xxxProvider.notifier).state = value` inside `initState` (ConsumerState) | 触发 "Tried to modify a provider while the widget tree was building" 运行时异常。必须用 `Future.microtask(() => ref.read(xxxProvider.notifier).state = value)` 或在 `addPostFrameCallback` 中修改。 | BATCH-05-24 |
+| `Slider` widget without `Material` ancestor in custom overlay | 导致 "No Material widget found" 红屏 + 底部 RenderFlex overflow。任何不在 Scaffold/AppBar 内的 `Slider` 必须包 `Material(type: MaterialType.transparency, child: ...)`。 | BATCH-05-24 |
+| `OverlayEntry` 用 `GestureDetector(behavior: HitTestBehavior.translucent)` 做 dismiss | `translucent` 让菜单项 tap 同时触发 dismiss handler → 菜单点一下就消失且无法重开。菜单背景用 `opaque` + 菜单本体包独立 `GestureDetector(onTap: () {})` 吸收 tap。 | BATCH-05-24 |
+| 阅读器控件用 `SafeArea` 包裹全屏覆盖层 | 导致控件栏无法覆盖状态栏/导航栏区域。`SafeArea` 只包阅读正文，控件覆盖层放在 Stack 同级（不受 SafeArea 限制），内部用 `MediaQuery.padding.top/bottom` 手工留空间给系统图标。 | BATCH-05-24 |
+| 控件覆盖层用 `AnimatedSlide` 做滑入/滑出动画 | `AnimatedSlide` 内部用 `FractionalTranslation`，导致控件背景无法铺到屏幕边缘。仅用 `AnimatedOpacity`（淡入淡出）即可；滑入动画不值得为边缘覆盖问题买单。 | BATCH-05-24 |
 
 ## 凭据保险柜 (Credential Vault, BATCH-03 / BATCH-03b)
 

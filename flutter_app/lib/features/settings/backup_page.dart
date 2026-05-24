@@ -85,6 +85,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   Widget _buildExportCard(BuildContext context) {
     return Card(
+      elevation: 1,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(
@@ -117,6 +122,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     final picked = _pickedZipPath;
     final recognized = _pickedZipRecognized;
     return Card(
+      elevation: 1,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(
@@ -335,6 +345,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   Widget _buildWebDavCard(BuildContext context) {
     return Card(
+      elevation: 1,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(

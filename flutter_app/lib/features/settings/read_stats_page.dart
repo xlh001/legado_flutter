@@ -109,6 +109,11 @@ class _ReadStatsPageState extends ConsumerState<ReadStatsPage> {
         Padding(
           padding: const EdgeInsets.all(12),
           child: Card(
+            elevation: 1,
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                   vertical: 18, horizontal: 16),
