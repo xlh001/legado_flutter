@@ -12,7 +12,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/dto.dart';
-import '../../core/colors.dart';
 import '../../core/download_runner.dart';
 import '../../core/platform_webview_executor.dart';
 import '../../core/providers.dart';
@@ -1963,17 +1962,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   )
                 : null,
           ),
-          child: Column(
+          child: Stack(
             children: [
-              if (showInfoBars)
-                SafeArea(
-                  bottom: false,
-                  child: _buildReadingInfoHeader(settings),
-                ),
-              Expanded(
-                child: Stack(
-                  children: [
+              Column(
+                children: [
+                  if (showInfoBars)
                     SafeArea(
+                      bottom: false,
+                      child: _buildReadingInfoHeader(settings),
+                    ),
+                  Expanded(
+                    child: SafeArea(
                       top: !showInfoBars,
                       child: IgnorePointer(
                         ignoring: contentLocked,
@@ -2034,82 +2033,67 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                         ),
                       ),
                     ),
-                    // 05-24 (html-ui): 控件覆盖层 — 不在 SafeArea 内，覆盖全屏
-                      // 替换原有分离的 reader_top_bar + reader_bottom_bar + contentLocked 挡板
-                      // 三段式结构。采用 AnimatedOpacity 淡入淡出（250ms）匹配 HTML 过渡。
-                      ReaderControlOverlay(
-                        settings: settings,
-                        bookName: _bookName,
-                        currentChapterTitle: _currentIndex < chapters.length
-                            ? (chapters[_currentIndex]['title'] as String? ?? '')
-                            : '',
-                        sourceName: _sourceName,
-                        sourceUrl: _sourceUrl,
-                        chapterUrl: _chapterUrl,
-                        hasBookmark: _hasBookmarkForChapter,
-                        chapterCount: chapters.length,
-                        currentIndex: _currentIndex,
-                        sliderValue: _sliderValue,
-                        hasPrev: hasPrev,
-                        hasNext: hasNext,
-                        isAutoScrolling: _isAutoScrolling,
-                        isNightMode: _settings.nightMode,
-                        isVisible: _controlsVisible,
-                        onBack: () => context.pop(),
-                        onChangeSource: () {
-                          _toggleControls();
-                          _showChangeSourceDialog(context);
-                        },
-                        onRefreshChapter: _refreshChapter,
-                        onStartDownload: () {
-                          _toggleControls();
-                          _startDownload(context);
-                        },
-                        onToggleBookmark: () {
-                          _toggleControls();
-                          _toggleBookmark();
-                        },
-                        onClose: _toggleControls,
-                        onSliderChanged: (v) =>
-                            setState(() => _sliderValue = v),
-                        onSliderChangeEnd: (targetIndex) {
-                          setState(() {
-                            _sliderValue = null;
-                            _currentIndex = targetIndex;
-                          });
-                          _navigateToChapter(targetIndex, chapters);
-                        },
-                        onPrevChapter: _goToPrevChapter,
-                        onNextChapter: _goToNextChapter,
-                        onStartSearch: _startSearch,
-                        onToggleAutoScroll: () {
-                          _toggleControls();
-                          _toggleAutoScroll();
-                        },
-                        onToggleNightMode: _toggleNightMode,
-                        onOpenReplaceRules: () {
-                          _toggleControls();
-                          context.push('/replace-rules');
-                        },
-                        onShowDirectory: _showDirectorySheet,
-                        onStartTts: () {
-                          _toggleControls();
-                          _startTts();
-                        },
-                        onShowReaderSettings: _showReaderSettings,
-                      ),
-                      if (_isSpeaking) _buildTtsBar(),
-                      if (_isSearching) _buildSearchBar(),
-                    ],
                   ),
-                ),
-                if (showInfoBars) _buildReadingInfoFooter(chapters, settings),
-              ],
-            ),
+                  if (showInfoBars) _buildReadingInfoFooter(chapters, settings),
+                ],
+              ),
+              // 05-24 (html-ui): 控件覆盖层 — 不在 SafeArea 内，覆盖全屏
+              // 替换原有分离的 reader_top_bar + reader_bottom_bar + contentLocked 挡板
+              // 三段式结构。采用 AnimatedOpacity 淡入淡出（250ms）匹配 HTML 过渡。
+              ReaderControlOverlay(
+                settings: settings,
+                bookName: _bookName,
+                currentChapterTitle: _currentIndex < chapters.length
+                    ? (chapters[_currentIndex]['title'] as String? ?? '')
+                    : '',
+                sourceName: _sourceName,
+                sourceUrl: _sourceUrl,
+                chapterUrl: _chapterUrl,
+                hasBookmark: _hasBookmarkForChapter,
+                chapterCount: chapters.length,
+                currentIndex: _currentIndex,
+                sliderValue: _sliderValue,
+                hasPrev: hasPrev,
+                hasNext: hasNext,
+                isAutoScrolling: _isAutoScrolling,
+                isNightMode: _settings.nightMode,
+                isVisible: _controlsVisible,
+                onBack: () => _dismissThen(context.pop),
+                onChangeSource: () =>
+                    _dismissThen(() => _showChangeSourceDialog(context)),
+                onRefreshChapter: () => _dismissThen(_refreshChapter),
+                onStartDownload: () =>
+                    _dismissThen(() => _startDownload(context)),
+                onToggleBookmark: () => _dismissThen(_toggleBookmark),
+                onClose: _toggleControls,
+                onSliderChanged: (v) =>
+                    setState(() => _sliderValue = v),
+                onSliderChangeEnd: (targetIndex) {
+                  setState(() {
+                    _sliderValue = null;
+                    _currentIndex = targetIndex;
+                  });
+                  _navigateToChapter(targetIndex, chapters);
+                },
+                onPrevChapter: () => _dismissThen(_goToPrevChapter),
+                onNextChapter: () => _dismissThen(_goToNextChapter),
+                onStartSearch: () => _dismissThen(_startSearch),
+                onToggleAutoScroll: () => _dismissThen(_toggleAutoScroll),
+                onToggleNightMode: () => _dismissThen(_toggleNightMode),
+                onOpenReplaceRules: () =>
+                    _dismissThen(() => context.push('/replace-rules')),
+                onShowDirectory: () => _dismissThen(_showDirectorySheet),
+                onStartTts: () => _dismissThen(_startTts),
+                onShowReaderSettings: () => _dismissThen(_showReaderSettings),
+              ),
+              if (_isSpeaking) _buildTtsBar(),
+              if (_isSearching) _buildSearchBar(),
+            ],
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   List<_ContinuousItem> _buildContinuousItemList() {
@@ -2135,6 +2119,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     // Bug 2: 超时/加载失败状态
     if (_chapterContent == '正文加载失败') {
       return _buildContentTimeoutView();
+    }
+    if (_chapterContent == '无书源信息') {
+      return _buildContentTimeoutView(message: '无书源信息\n请换源或导入有效书源');
     }
     final textStyle = TextStyle(
       fontSize: settings.fontSize,
@@ -2211,46 +2198,63 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   /// Bug 2: 章节内容加载超时/失败的不可操作提示。点击触发重试。
-  Widget _buildContentTimeoutView() {
-    final bgColor = Color(_settings.effectiveBackgroundColor);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _refreshChapter,
-      child: Container(
-        color: bgColor,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline,
-                  size: 48, color: context.al.textSecondary.withValues(alpha: 0.6)),
-              const SizedBox(height: 12),
-              Text(
-                '正文加载失败',
-                style: TextStyle(
-                  color: Color(_settings.effectiveTextColor).withValues(alpha: 0.6),
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '点击重试',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
+  Widget _buildContentTimeoutView({String message = '正文加载失败'}) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off, size: 48, color: cs.onSurface.withAlpha(0x40)),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center,
+              style: TextStyle(color: cs.onSurface.withAlpha(0x80), fontSize: 16)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => _retryLoadChapter(),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('点击重试'),
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _retryLoadChapter() async {
+    if (_cachedChapters == null || _cachedChapters!.isEmpty) return;
+    final chapters = _cachedChapters!;
+    final index = _currentIndex.clamp(0, chapters.length - 1);
+    final chapterId = chapters[index]['id'] as String?;
+    if (chapterId != null) {
+      try {
+        final dbPath = await ref.read(dbPathProvider.future);
+        await rust_api.updateChapterContent(dbPath: dbPath, chapterId: chapterId, content: '');
+        chapters[index]['content'] = null;
+      } catch (e) {
+        debugPrint('[Reader] retry clear cache failed: $e');
+      }
+    }
+    if (_settings.isScrollMode) {
+      if (mounted) safeSetState(() {
+        _loadedChapters = [];
+        _cachedContinuousItems = null;
+        _chapterTitleKeys.clear();
+        _paragraphKeys.clear();
+      });
+    }
+    if (mounted) safeSetState(() => _chapterContent = '');
+    await _openChapter(index, chapters);
   }
 
   Widget _buildPageBody(ReaderSettings settings) {
     // Bug 2: 超时/加载失败状态 — 显示重试界面
     if (_chapterContent == '正文加载失败') {
       return _buildContentTimeoutView();
+    }
+    if (_chapterContent == '无书源信息') {
+      return _buildContentTimeoutView(message: '无书源信息\n请换源或导入有效书源');
     }
     // Bug 1: 轻量修复 — spinner→内容过渡用 AnimatedOpacity 淡入
     // AnimatedOpacity 常驻树内：首次加载时 opacity 0→1 动画；后续翻章
@@ -2617,6 +2621,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     updatedBook['source_id'] = result.sourceId;
     updatedBook['source_name'] = result.sourceName;
     updatedBook['book_url'] = result.bookUrl;
+    updatedBook['source_url'] = result.bookUrl;
     updatedBook['chapter_count'] = savedCount;
     if (chapters.isNotEmpty) {
       updatedBook['latest_chapter_title'] = chapters.last['title'];
@@ -2851,6 +2856,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   void _toggleControls() {
     setState(() => _controlsVisible = !_controlsVisible);
     if (_controlsVisible) _saveScrollPosition();
+  }
+
+  void _dismissThen(VoidCallback action) {
+    if (!_controlsVisible) {
+      action();
+      return;
+    }
+    _toggleControls();
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) action();
+    });
   }
 
   Widget _buildReadingInfoHeader(ReaderSettings settings) {

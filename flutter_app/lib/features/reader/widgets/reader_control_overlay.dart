@@ -90,131 +90,158 @@ class ReaderControlOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = cs.brightness == Brightness.dark;
-    final topPadding = MediaQuery.of(context).padding.top;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final topPad = MediaQuery.of(context).padding.top;
+    final botPad = MediaQuery.of(context).padding.bottom;
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
 
-    return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: !isVisible,
-        child: Column(
-          children: [
-            // ---- Top control bar (covers status bar) ----
-            AnimatedOpacity(
-              opacity: isVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              child: AnnotatedRegion<SystemUiOverlayStyle>(
-                value: SystemUiOverlayStyle(
-                  statusBarColor: cs.surface,
-                  statusBarIconBrightness:
-                      isDark ? Brightness.light : Brightness.dark,
-                ),
-                child: Material(
-                  color: cs.surface,
-                  child: Padding(
-                    padding: EdgeInsets.only(top: topPadding, left: 8, bottom: 4, right: 4),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildHeaderRow1(context, cs),
-                        const SizedBox(height: 4),
-                        _buildHeaderRow2(cs),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+    return Positioned(
+      left: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          debugPrint(
+            '[ReaderOverlay] visible=$isVisible '
+            'screen=(${screenW.toStringAsFixed(0)},${screenH.toStringAsFixed(0)}) '
+            'box=(${constraints.maxWidth.toStringAsFixed(0)},${constraints.maxHeight.toStringAsFixed(0)}) '
+            'topPad=$topPad botPad=$botPad',
+          );
 
-            // ---- Middle: tap-to-close + floating FABs near bottom ----
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onClose,
+          return IgnorePointer(
+            ignoring: !isVisible,
+            child: Column(
+              children: [
+                // ---- Top bar ----
+                AnimatedOpacity(
+                  opacity: isVisible ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: SystemUiOverlayStyle(
+                      statusBarColor: cs.surface,
+                      statusBarIconBrightness:
+                          isDark ? Brightness.light : Brightness.dark,
                     ),
-                  ),
-                  AnimatedOpacity(
-                    opacity: isVisible ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 250),
-                    child: Align(
-                      alignment: const Alignment(0, 0.85),
+                    child: Material(
+                      color: cs.surface,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        padding: EdgeInsets.fromLTRB(8, topPad, 4, 4),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            _fab(Icons.search, cs, onTap: onStartSearch),
-                            _fab(isAutoScrolling ? Icons.pause : Icons.autorenew, cs, onTap: onToggleAutoScroll),
-                            _fab(isNightMode ? Icons.wb_sunny : Icons.nightlight_round, cs, onTap: onToggleNightMode),
-                            _fab(Icons.settings, cs, onTap: onShowReaderSettings),
+                            _headerRow1(context, cs),
+                            const SizedBox(height: 4),
+                            _headerRow2(cs),
                           ],
                         ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            // ---- Bottom control bar (covers nav bar) ----
-            AnimatedOpacity(
-              opacity: isVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              child: Material(
-                color: cs.surface,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: bottomPadding, left: 12, top: 4, right: 12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                // ---- Middle ----
+                Expanded(
+                  child: Stack(
                     children: [
-                      Container(height: 0.5, color: cs.outlineVariant),
-                      const SizedBox(height: 8),
-                      _buildProgressBar(context, cs),
-                      const SizedBox(height: 8),
-                      _buildBottomNav(context, cs),
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onClose,
+                        ),
+                      ),
+                      AnimatedOpacity(
+                        opacity: isVisible ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Align(
+                          alignment: const Alignment(0, 0.85),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                                _fab(Icons.search, cs, onTap: onStartSearch),
+                                _fab(
+                                  isAutoScrolling
+                                      ? Icons.pause
+                                      : Icons.autorenew,
+                                  cs,
+                                  onTap: onToggleAutoScroll,
+                                ),
+                                _fab(
+                                  isNightMode
+                                      ? Icons.wb_sunny
+                                      : Icons.nightlight_round,
+                                  cs,
+                                  onTap: onToggleNightMode,
+                                ),
+                                _fab(
+                                  Icons.settings,
+                                  cs,
+                                  onTap: onShowReaderSettings,
+                                ),
+                              ],
+                            ),
+                          ),
+                      ),
                     ],
                   ),
                 ),
-              ),
+
+                // ---- Bottom bar ----
+                AnimatedOpacity(
+                  opacity: isVisible ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: Material(
+                    color: cs.surface,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(12, 4, 12, botPad),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _progressBar(context, cs),
+                          const SizedBox(height: 8),
+                          _bottomNav(context, cs),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildHeaderRow1(BuildContext context, ColorScheme cs) {
-    final titleText = bookName.isNotEmpty
+  Widget _headerRow1(BuildContext context, ColorScheme cs) {
+    final title = bookName.isNotEmpty
         ? bookName
         : currentChapterTitle.isNotEmpty
             ? currentChapterTitle
             : '阅读';
-
     return Row(
       children: [
-        _ctrlIconBtn(Icons.arrow_back, cs, tooltip: '返回', onTap: onBack),
+        _iconBtn(Icons.arrow_back, cs, tooltip: '返回', onTap: onBack),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            titleText,
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: cs.onSurface,
-              decoration: TextDecoration.none,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
-        _ctrlIconBtn(Icons.swap_horiz, cs, tooltip: '换源', onTap: onChangeSource),
-        _ctrlIconBtn(Icons.refresh, cs, tooltip: '刷新', onTap: onRefreshChapter),
-        _ctrlIconBtn(Icons.download, cs, tooltip: '缓存', onTap: onStartDownload),
+        _iconBtn(Icons.swap_horiz, cs, tooltip: '换源', onTap: onChangeSource),
+        _iconBtn(Icons.refresh, cs, tooltip: '刷新', onTap: onRefreshChapter),
+        _iconBtn(Icons.download, cs, tooltip: '缓存', onTap: onStartDownload),
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert, color: cs.onSurfaceVariant, size: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           onSelected: (v) {
@@ -225,9 +252,12 @@ class ReaderControlOverlay extends StatelessWidget {
               value: 'bookmark',
               child: Row(
                 children: [
-                  Icon(hasBookmark ? Icons.bookmark : Icons.bookmark_border, size: 20),
+                  Icon(
+                    hasBookmark ? Icons.bookmark : Icons.bookmark_border,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
-                  const Text('书签', style: TextStyle(decoration: TextDecoration.none)),
+                  const Text('书签'),
                 ],
               ),
             ),
@@ -242,7 +272,7 @@ class ReaderControlOverlay extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderRow2(ColorScheme cs) {
+  Widget _headerRow2(ColorScheme cs) {
     final label = sourceName.isNotEmpty ? sourceName : '书源';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -257,16 +287,22 @@ class ReaderControlOverlay extends StatelessWidget {
                 if (currentChapterTitle.isNotEmpty)
                   Text(
                     currentChapterTitle,
-                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, decoration: TextDecoration.none),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
                   ),
                 if (sourceUrl.isNotEmpty || chapterUrl.isNotEmpty)
                   Text(
                     sourceUrl.isNotEmpty ? sourceUrl : chapterUrl,
-                    style: TextStyle(color: cs.onSurfaceVariant.withAlpha(0x99), fontSize: 10, decoration: TextDecoration.none),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withAlpha(0x99),
+                      fontSize: 10,
+                    ),
                   ),
               ],
             ),
@@ -274,12 +310,19 @@ class ReaderControlOverlay extends StatelessWidget {
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-            decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: cs.primary,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Text(
               label,
-              style: TextStyle(color: cs.onPrimary, fontSize: 11, fontWeight: FontWeight.w500, decoration: TextDecoration.none),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: cs.onPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -287,30 +330,11 @@ class ReaderControlOverlay extends StatelessWidget {
     );
   }
 
-  Widget _fab(IconData icon, ColorScheme cs, {required VoidCallback onTap}) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: cs.surface,
-          boxShadow: [
-            BoxShadow(color: cs.shadow.withAlpha(0x14), blurRadius: 8, offset: const Offset(0, 2)),
-          ],
-        ),
-        child: Icon(icon, color: cs.onSurfaceVariant, size: 24),
-      ),
-    );
-  }
-
-  Widget _buildProgressBar(BuildContext context, ColorScheme cs) {
-    final double maxChapter = (chapterCount - 1).toDouble();
-    final double maxChapterClamped = maxChapter < 0 ? 0.0 : maxChapter;
-    final double currentVal = (sliderValue ?? currentIndex.toDouble()).clamp(0, maxChapterClamped) as double;
-
+  Widget _progressBar(BuildContext context, ColorScheme cs) {
+    final maxCh = (chapterCount - 1).toDouble();
+    final maxChClamped = maxCh < 0 ? 0.0 : maxCh;
+    final cur = (sliderValue ?? currentIndex.toDouble())
+        .clamp(0, maxChClamped) as double;
     return Row(
       children: [
         _labelBtn('上一章', cs, hasPrev ? onPrevChapter : null),
@@ -318,20 +342,21 @@ class ReaderControlOverlay extends StatelessWidget {
           child: SliderTheme(
             data: SliderThemeData(
               trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              thumbShape:
+                  const RoundSliderThumbShape(enabledThumbRadius: 7),
               activeTrackColor: cs.primary,
               inactiveTrackColor: cs.surfaceContainerHighest,
               thumbColor: cs.primary,
             ),
             child: Slider(
-              value: currentVal,
+              value: cur,
               min: 0,
-              max: maxChapterClamped,
+              max: maxChClamped,
               divisions: chapterCount > 1 ? chapterCount - 1 : 1,
               onChanged: onSliderChanged,
               onChangeEnd: (v) {
-                final targetIndex = v.round().clamp(0, chapterCount - 1);
-                onSliderChangeEnd(targetIndex);
+                final idx = v.round().clamp(0, chapterCount - 1);
+                onSliderChangeEnd(idx);
               },
             ),
           ),
@@ -341,7 +366,7 @@ class ReaderControlOverlay extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNav(BuildContext context, ColorScheme cs) {
+  Widget _bottomNav(BuildContext context, ColorScheme cs) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
@@ -353,16 +378,19 @@ class ReaderControlOverlay extends StatelessWidget {
     );
   }
 
-  Widget _ctrlIconBtn(IconData icon, ColorScheme cs, {String? tooltip, required VoidCallback onTap}) {
+  Widget _iconBtn(IconData icon, ColorScheme cs,
+      {String? tooltip, required VoidCallback onTap}) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Tooltip(
         message: tooltip ?? '',
         child: Container(
-          width: 40, height: 40,
+          width: 40,
+          height: 40,
           alignment: Alignment.center,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+          decoration:
+              BoxDecoration(borderRadius: BorderRadius.circular(12)),
           child: Icon(icon, color: cs.onSurfaceVariant, size: 24),
         ),
       ),
@@ -378,16 +406,18 @@ class ReaderControlOverlay extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: onTap != null ? cs.onSurfaceVariant : cs.onSurfaceVariant.withAlpha(0x40),
+            color: onTap != null
+                ? cs.onSurfaceVariant
+                : cs.onSurfaceVariant.withAlpha(0x40),
             fontSize: 12,
-            decoration: TextDecoration.none,
           ),
         ),
       ),
     );
   }
 
-  Widget _navBtn(IconData icon, String label, ColorScheme cs, VoidCallback onTap) {
+  Widget _navBtn(
+      IconData icon, String label, ColorScheme cs, VoidCallback onTap) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -398,9 +428,39 @@ class ReaderControlOverlay extends StatelessWidget {
           children: [
             Icon(icon, color: cs.onSurfaceVariant, size: 24),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10, decoration: TextDecoration.none)),
+            Text(
+              label,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 10,
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _fab(IconData icon, ColorScheme cs,
+      {required VoidCallback onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: cs.surface,
+          boxShadow: [
+            BoxShadow(
+              color: cs.shadow.withAlpha(0x14),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: cs.onSurfaceVariant, size: 24),
       ),
     );
   }

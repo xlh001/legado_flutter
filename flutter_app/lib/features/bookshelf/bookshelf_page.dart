@@ -171,16 +171,13 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         },
         child: Stack(
           children: [
-            Positioned.fill(
-              child: Container(color: Colors.black26),
-            ),
             CompositedTransformFollower(
               link: _menuLayerLink,
               targetAnchor: Alignment.bottomRight,
               followerAnchor: Alignment.topRight,
               offset: const Offset(0, 8),
               child: GestureDetector(
-                onTap: () {}, // absorb taps on the menu itself
+                onTap: () {},
                 child: Material(
                   elevation: 8,
                   borderRadius: BorderRadius.circular(16),
@@ -189,8 +186,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       maxHeight: screenHeight * 0.65,
-                      minWidth: 180,
-                      maxWidth: 240,
+                      minWidth: 160,
+                      maxWidth: 200,
                     ),
                     child: SingleChildScrollView(
                       child: Column(
@@ -257,7 +254,6 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
       }
     }
 
-    final colorScheme = Theme.of(overlayCtx).colorScheme;
     return [
       _overlayMenuItem(overlayCtx, 'update_toc', Icons.refresh, '更新目录',
           () => onSelect('update_toc')),
@@ -269,12 +265,10 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
           () => onSelect('add_url')),
       _overlayMenuItem(overlayCtx, 'qr_scan', Icons.qr_code_scanner, '扫码导入',
           () => onSelect('qr_scan')),
-      _overlayDivider(overlayCtx, colorScheme),
       _overlayMenuItem(overlayCtx, 'bookshelf_manage', Icons.edit_note,
           '书架管理', () => onSelect('bookshelf_manage')),
       _overlayMenuItem(overlayCtx, 'cache_export', Icons.download_outlined,
           '缓存/导出', () => onSelect('cache_export')),
-      _overlayDivider(overlayCtx, colorScheme),
       _overlayMenuItem(overlayCtx, 'manage_groups', Icons.folder_outlined,
           '分组管理', () => onSelect('manage_groups')),
       _overlayMenuItem(overlayCtx, 'bookshelf_layout', Icons.dashboard_outlined,
@@ -286,7 +280,6 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
       _overlayMenuItem(overlayCtx, 'import_bookshelf',
           Icons.file_download_outlined, '导入书架',
           () => onSelect('import_bookshelf')),
-      _overlayDivider(overlayCtx, colorScheme),
       _overlayDisabledMenuItem(
           overlayCtx, Icons.article_outlined, '日志'),
     ];
@@ -971,14 +964,6 @@ class _BookListView extends ConsumerWidget {
       onLongPress: () => _showBookActionSheet(context, ref, book),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: colorScheme.outlineVariant,
-              width: 1,
-            ),
-          ),
-        ),
         child: Stack(
           children: [
             Row(
@@ -1589,13 +1574,6 @@ Widget _overlayMenuItem(BuildContext ctx, String value, IconData icon,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: _BookMenuRow(icon: icon, label: label),
     ),
-  );
-}
-
-Widget _overlayDivider(BuildContext ctx, ColorScheme cs) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-    child: Divider(height: 1, color: cs.outlineVariant),
   );
 }
 
