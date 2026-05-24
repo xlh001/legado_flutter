@@ -476,13 +476,13 @@ struct LegadoBookSource {
     name: String,
     #[serde(rename = "bookSourceGroup", default)]
     group_name: String,
-    #[serde(rename = "bookSourceType", default)]
+    #[serde(rename = "bookSourceType", default, deserialize_with = "deser_flexible_i32")]
     source_type: i32,
     #[serde(default = "default_true")]
     enabled: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deser_flexible_i32")]
     weight: i32,
-    #[serde(rename = "customOrder", default)]
+    #[serde(rename = "customOrder", default, deserialize_with = "deser_flexible_i32")]
     custom_order: i32,
     #[serde(default, deserialize_with = "deser_flexible_header")]
     header: Option<String>,
@@ -526,7 +526,7 @@ struct LegadoBookSource {
     concurrent_rate: Option<String>,
     #[serde(rename = "variableComment", default)]
     variable_comment: Option<String>,
-    #[serde(rename = "exploreScreen", default)]
+    #[serde(rename = "exploreScreen", default, deserialize_with = "deser_option_flexible_i32")]
     explore_screen: Option<i32>,
 }
 
@@ -551,7 +551,73 @@ where
             Ok(v as i64)
         }
         fn visit_str<E: de::Error>(self, v: &str) -> Result<i64, E> {
+            if v.is_empty() { return Ok(0); }
             v.parse::<i64>()
+                .map_err(|_| de::Error::custom("invalid number string"))
+        }
+    }
+    deserializer.deserialize_any(Visitor)
+}
+
+fn deser_flexible_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+    struct Visitor;
+    impl<'de> de::Visitor<'de> for Visitor {
+        type Value = i32;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a number or string containing a number")
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<i32, E> {
+            if v.is_empty() { return Ok(0); }
+            v.parse::<i32>()
+                .map_err(|_| de::Error::custom("invalid number string"))
+        }
+    }
+    deserializer.deserialize_any(Visitor)
+}
+
+fn deser_option_flexible_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+    struct Visitor;
+    impl<'de> de::Visitor<'de> for Visitor {
+        type Value = Option<i32>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an optional integer or string")
+        }
+        fn visit_none<E: de::Error>(self) -> Result<Option<i32>, E> {
+            Ok(None)
+        }
+        fn visit_unit<E: de::Error>(self) -> Result<Option<i32>, E> {
+            Ok(None)
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<Option<i32>, E> {
+            Ok(Some(v as i32))
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<Option<i32>, E> {
+            Ok(Some(v as i32))
+        }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<Option<i32>, E> {
+            Ok(Some(v as i32))
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Option<i32>, E> {
+            if v.is_empty() { return Ok(None); }
+            v.parse::<i32>()
+                .map(|n| Some(n))
                 .map_err(|_| de::Error::custom("invalid number string"))
         }
     }

@@ -87,7 +87,7 @@ pub struct LegadoBookSource {
     )]
     pub group_name: String,
 
-    #[serde(rename = "bookSourceType", default)]
+    #[serde(rename = "bookSourceType", default, deserialize_with = "i32_from_any")]
     pub source_type: i32,
 
     #[serde(
@@ -114,10 +114,10 @@ pub struct LegadoBookSource {
     #[serde(rename = "enabledExplore", default)]
     pub enabled_explore: bool,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "i32_from_any")]
     pub weight: i32,
 
-    #[serde(rename = "customOrder", default)]
+    #[serde(rename = "customOrder", default, deserialize_with = "i32_from_any")]
     pub custom_order: i32,
 
     // ── 请求配置 ──
@@ -220,8 +220,60 @@ fn string_from_any<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let value = Option::<JsonValue>::deserialize(deserializer)?;
-    Ok(value_to_string(value).unwrap_or_default())
+    use serde::de::{self, Unexpected};
+    struct StringVisitor;
+    impl<'de> de::Visitor<'de> for StringVisitor {
+        type Value = String;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a string or integer")
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> {
+            Ok(v.to_owned())
+        }
+        fn visit_string<E: de::Error>(self, v: String) -> Result<String, E> {
+            Ok(v)
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_bool<E: de::Error>(self, v: bool) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+    }
+    deserializer.deserialize_any(StringVisitor)
+}
+
+fn i32_from_any<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self};
+    struct I32Visitor;
+    impl<'de> de::Visitor<'de> for I32Visitor {
+        type Value = i32;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an integer or a string of digits")
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<i32, E> {
+            if v.is_empty() {
+                return Ok(0);
+            }
+            v.parse::<i32>().map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+        }
+    }
+    deserializer.deserialize_any(I32Visitor)
 }
 
 fn option_string_from_any<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>

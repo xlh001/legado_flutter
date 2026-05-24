@@ -3,7 +3,35 @@
 //! 提供 core-source 模块使用的核心数据结构。
 //! 对应原 Legado 的 BookSource/SearchRule/BookInfoRule 等。
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize an i32 from either a number or a string (Legado format compatibility).
+fn deser_i32<'de, D>(d: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{self, Unexpected};
+    struct I32Visitor;
+    impl<'de> de::Visitor<'de> for I32Visitor {
+        type Value = i32;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an integer or a string of digits")
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<i32, E> {
+            Ok(v as i32)
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<i32, E> {
+            if v.is_empty() {
+                return Ok(0);
+            }
+            v.parse::<i32>().map_err(|_| E::invalid_value(Unexpected::Str(v), &self))
+        }
+    }
+    d.deserialize_any(I32Visitor)
+}
 
 /// 书源结构体（对应原 Legado 的 BookSource）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,16 +40,16 @@ pub struct BookSource {
     pub name: String,
     pub url: String,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deser_i32")]
     pub source_type: i32, // 0=小说, 1=音频, 2=图片, 3=RSS
     #[serde(default)]
     pub enabled: bool,
 
     #[serde(default)]
     pub group_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deser_i32")]
     pub custom_order: i32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deser_i32")]
     pub weight: i32,
 
     /// 规则（JSON 格式）
