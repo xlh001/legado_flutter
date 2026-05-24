@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/flutter-app/directory-structure.md", "reason": "Folder boundaries and import rules for feature pages"}
+{"file": ".trellis/spec/flutter-app/async-and-mounted.md", "reason": "mounted checks and safeSetState patterns required when modifying stateful widgets"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "Forbidden patterns and quality bar for UI code"}
+{"file": ".trellis/spec/flutter-app/testing.md", "reason": "Test hook patterns to avoid breaking ~421 existing tests"}
