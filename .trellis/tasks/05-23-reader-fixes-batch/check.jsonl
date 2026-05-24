@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "Quality checks: lint, typecheck, anti-patterns to avoid in all bug fixes"}
+{"file": ".trellis/spec/flutter-app/async-and-mounted.md", "reason": "Verify mounted guards and async patterns are correct across all fixes"}
+{"file": ".trellis/spec/flutter-app/state-and-providers.md", "reason": "Verify Provider usage patterns are followed in Bug 5 search changes"}

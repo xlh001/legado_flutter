@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/flutter-app/async-and-mounted.md", "reason": "Async patterns: timeout, Isolate.run(), mounted guards — needed for Bug 1/2/3 async changes"}
+{"file": ".trellis/spec/flutter-app/state-and-providers.md", "reason": "Provider usage patterns for Bug 5 search state changes"}
+{"file": ".trellis/tasks/05-23-reader-fixes-batch/research/md3-chapter-nav.md", "reason": "MD3 cross-chapter animation design reference for Bug 3"}
+{"file": ".trellis/tasks/05-23-reader-fixes-batch/research/md3-simulation-delegate.md", "reason": "MD3 simulation delegate comparison for Bug 4 — touchY override + ColorFilter"}
