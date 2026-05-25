@@ -1,0 +1,21 @@
+{"file": ".trellis/tasks/05-24-batch-check-sources/prd.md", "reason": "Full PRD with requirements, decisions, acceptance criteria, implementation plan"}
+{"file": ".trellis/spec/flutter-app/state-and-providers.md", "reason": "Riverpod provider patterns for new SourceCheckProgressPage, existing allSourcesProvider / sourceValidationServiceProvider"}
+{"file": ".trellis/spec/flutter-app/directory-structure.md", "reason": "Where to place new source_check_progress_page.dart and config dialog"}
+{"file": ".trellis/spec/flutter-app/async-and-mounted.md", "reason": "Stream.listen lifecycle, mounted checks, dispose patterns for progress page"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "Forbidden patterns: no setState during build, proper Future.microtask wrapping"}
+{"file": ".trellis/spec/rust-core/storage-and-database.md", "reason": "DB v13 migration pattern, pragma_table_info guard, ALTER TABLE conventions, DB_VERSION bump"}
+{"file": ".trellis/spec/rust-core/error-handling.md", "reason": "Rust error handling conventions for batch_check_sources FRB function"}
+{"file": ".trellis/spec/rust-core/quality-and-anti-patterns.md", "reason": "Rust anti-patterns: avoid unwrap, proper Result propagation, timeout/interrupt handling"}
+{"file": ".trellis/spec/rust-core/directory-structure.md", "reason": "Where to add batch_run_live_test in core-source module tree"}
+{"file": ".trellis/spec/cross-language/frb-bridge.md", "reason": "FRB StreamSink pattern, flutter_rust_bridge_codegen generate workflow, new funcId registration"}
+{"file": ".trellis/spec/cross-language/data-flow.md", "reason": "Cross-layer data flow: CheckConfig JSON → Rust → StreamSink → Dart Stream → UI"}
+{"file": ".trellis/spec/cross-language/field-mapping.md", "reason": "Rust struct ↔ Dart Map snake_case key convention, new respond_time/last_check_error/last_check_at fields"}
+{"file": "core/core-storage/src/database.rs", "reason": "Existing DB schema (29 cols), DB_VERSION=12, migration v1→v12 dispatch, v13 template"}
+{"file": "core/core-storage/src/models.rs", "reason": "BookSource struct (29 fields) — add respond_time/last_check_error/last_check_at"}
+{"file": "core/core-storage/src/source_dao.rs", "reason": "BOOK_SOURCE_COLUMNS, SOURCE_UPSERT_SQL, book_source_from_row() — must update all 3 for new columns"}
+{"file": "core/core-source/src/lib.rs", "reason": "Existing run_live_test (4-stage), LiveTestReport, LiveTestStage — add batch wrapper + CheckConfig"}
+{"file": "core/bridge/src/api.rs", "reason": "Existing validate_source_live FRB — add batch_check_sources Stream variant"}
+{"file": "flutter_app/lib/features/source/source_page.dart", "reason": "Existing UI: _buildBottomActionBar ⋮ menu gap, _selectMode state, allSourcesProvider, sorting/filter additions"}
+{"file": "flutter_app/lib/core/services/source_validation_service.dart", "reason": "Existing SourceValidationService provider pattern — add batchCheckSources method"}
+{"file": "flutter_app/lib/src/rust/api.dart", "reason": "FRB-generated Dart bindings — after codegen, batchCheckSources entry appears here"}
+{"file": "flutter_app/lib/core/providers.dart", "reason": "Existing allSourcesProvider, dbPathProvider, dbInitializedProvider"}

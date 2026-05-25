@@ -1,0 +1,10 @@
+{"file": ".trellis/tasks/05-24-batch-check-sources/prd.md", "reason": "Acceptance criteria checklist: DB migration, FRB Stream, progress page, sorting/filter, failure badge, 反选 fix, analyze 0 errors, cargo test pass, 5 real source verify"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "Verify no setState during build, no missing mounted checks, proper Stream.dispose, no AnimatedSlide/CustomTransitionPage"}
+{"file": ".trellis/spec/flutter-app/testing.md", "reason": "WidgetTest patterns for new progress page and config dialog"}
+{"file": ".trellis/spec/flutter-app/async-and-mounted.md", "reason": "Verify Stream.listen in initState + cancel in dispose, mounted guards before setState"}
+{"file": ".trellis/spec/flutter-app/state-and-providers.md", "reason": "Verify new providers follow Riverpod conventions, no global mutable state"}
+{"file": ".trellis/spec/rust-core/quality-and-anti-patterns.md", "reason": "Verify no unwrap, proper Result/error propagation, tokio::time::timeout correct usage, Semaphore drop safety"}
+{"file": ".trellis/spec/rust-core/testing.md", "reason": "Rust test patterns — add batch test with httpmock like existing test_run_live_test_all_pass"}
+{"file": ".trellis/spec/rust-core/storage-and-database.md", "reason": "Verify migration v13 idempotent (pragma_table_info), DB_VERSION=13, migration registered in dispatch"}
+{"file": ".trellis/spec/cross-language/frb-bridge.md", "reason": "Verify StreamSink correctly wired, codegen re-run, new funcId registered in bridge"}
+{"file": ".trellis/spec/cross-language/data-flow.md", "reason": "Verify CheckConfig JSON round-trip, SourceCheckProgress JSON schema correctness"}
