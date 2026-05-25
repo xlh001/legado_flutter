@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-25-diagnostics-breadcrumbs/prd.md", "reason": "Acceptance criteria verification"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "No secrets in breadcrumbs, no per-frame logging"}
+{"file": ".trellis/spec/cross-language/frb-bridge.md", "reason": "No generated FRB edits"}
+{"file": "flutter_app/lib/core/diagnostics/diagnostic_log.dart", "reason": "API usage correctness"}
+{"file": "flutter_app/lib/core/diagnostics/diagnostic_redactor.dart", "reason": "Redaction already applied in event creation"}

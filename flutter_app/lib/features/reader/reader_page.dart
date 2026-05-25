@@ -13,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/dto.dart';
 import '../../core/download_runner.dart';
+import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/platform_webview_executor.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/safe_setstate.dart';
@@ -471,6 +472,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       final cleaned = _cleanHtml(content);
       debugPrint(
           '[Reader.timing] _loadChapterContent ch=$index cleanHtml done TOTAL=${stopwatch.elapsedMilliseconds}ms');
+      DiagnosticLog.debug('reader.chapter_load', 'Chapter loaded from cache',
+          metadata: {'book_id': widget.bookId, 'chapter_index': index, 'len': chContent.length, 'elapsed_ms': stopwatch.elapsedMilliseconds});
       return cleaned;
     }
     debugPrint(
@@ -550,6 +553,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     }
 
     content = await _applyReplaceRulesViaRust(dbPath, content);
+    DiagnosticLog.debug('reader.chapter_load', 'Chapter fetched from network',
+        metadata: {'book_id': widget.bookId, 'chapter_index': index, 'elapsed_ms': stopwatch.elapsedMilliseconds});
 
     return _cleanHtml(content);
   }
@@ -706,6 +711,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       final title = index < chapters.length
           ? (chapters[index]['title'] as String? ?? '')
           : '';
+      DiagnosticLog.info('reader.open', 'Book chapter opened',
+          metadata: {'book_id': widget.bookId, 'chapter_index': index, 'chapter_count': chapters.length});
       setState(() {
         _chapterContent = content;
         _isLoadingContent = false;
@@ -732,8 +739,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _preCachePrevChapter(index, chapters);
     } catch (e) {
       if (!mounted || requestId != _chapterRequestId) return;
-      // Bug 2: TimeoutException → show retryable error message
       final errorMsg = e is TimeoutException ? '正文加载失败' : '加载失败: $e';
+      DiagnosticLog.warn('reader.chapter_load', 'Chapter load failed',
+          error: e, metadata: {'book_id': widget.bookId, 'chapter_index': index, 'is_timeout': e is TimeoutException});
       setState(() {
         _chapterContent = errorMsg;
         _isLoadingContent = false;
@@ -2245,6 +2253,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       });
     }
     if (mounted) safeSetState(() => _chapterContent = '');
+    DiagnosticLog.info('reader.retry', 'Retrying chapter load',
+        metadata: {'book_id': widget.bookId, 'chapter_index': index});
     await _openChapter(index, chapters);
   }
 
@@ -2332,6 +2342,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       // Bug 2: TimeoutException → show retryable error; other errors → just
       // stop loading (keep old content visible rather than showing error).
       if (!mounted) return;
+      DiagnosticLog.warn('reader.chapter_load', 'Page-mode chapter load failed',
+          error: e, metadata: {'book_id': widget.bookId, 'chapter_index': targetIndex, 'is_timeout': e is TimeoutException});
       if (e is TimeoutException) {
         setState(() {
           _chapterContent = '正文加载失败';
@@ -2705,6 +2717,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
       final title = chapters[targetIndex]['title'] as String? ?? '';
       content = _cleanHtml(content);
+      DiagnosticLog.info('reader.change_source', 'Source changed',
+          metadata: {'book_id': widget.bookId, 'old_source_id': _sourceId, 'new_source_id': result.sourceId, 'new_source_name': result.sourceName, 'chapter_count': savedCount});
       setState(() {
         _chapterContent = content;
         _isLoadingContent = false;

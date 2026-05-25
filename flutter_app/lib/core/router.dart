@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'diagnostics/diagnostic_log.dart';
 import 'providers.dart';
 import '../features/bookshelf/bookshelf_page.dart';
 import '../features/bookshelf/book_info_edit_page.dart';
@@ -29,8 +30,31 @@ import '../features/remote_books/remote_books_page.dart';
 import '../features/bookshelf/bookshelf_manage_page.dart';
 import '../features/settings/diagnostics_page.dart';
 
+/// Task 05-25: GoRouter NavigatorObserver 自动记录导航 breadcrumbs。
+/// 仅记录路由 path（不含 query value），零页面代码改动。
+class _DiagnosticRouteObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _logRoute(route);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (newRoute != null) _logRoute(newRoute);
+  }
+
+  void _logRoute(Route<dynamic> route) {
+    final fullName = route.settings.name;
+    if (fullName == null || fullName == '/') return;
+    // Strip query values: only record path (e.g. "/reader" not "/reader?bookId=xxx")
+    final path = fullName.split('?').first;
+    DiagnosticLog.breadcrumb('nav.route', 'Navigated to $path');
+  }
+}
+
 final router = GoRouter(
   initialLocation: '/bookshelf',
+  observers: [_DiagnosticRouteObserver()],
   routes: [
     // BATCH-26a (05-22): 顶层 5 tab → 4 tab 重构。对齐原 legado
     // `main_bnv.xml`（书架 / 发现 / 订阅 / 我的）。

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../src/rust/api.dart' as rust_api;
+import 'diagnostics/diagnostic_log.dart';
 import 'notification_service.dart';
 
 /// R69: download status code constants. The wire-level int values come
@@ -103,6 +104,8 @@ class DownloadRunner {
       downloadDir: downloadDir,
       dbPath: dbPath,
     ));
+    DiagnosticLog.info('download.task', 'Download task created',
+        metadata: {'task_id': taskId, 'book_name': bookName, 'chapter_count': chapters.length});
     if (!_isRunning) {
       _processQueue();
     }
@@ -145,6 +148,8 @@ class DownloadRunner {
         taskId: task.taskId,
         status: DownloadTaskStatus.running,
       );
+      DiagnosticLog.info('download.task', 'Download task started',
+          metadata: {'task_id': task.taskId, 'book_name': task.bookName, 'chapter_count': totalChapters});
     } catch (e) {
       debugPrint('[Download] mark running failed: $e');
     }
@@ -235,6 +240,8 @@ class DownloadRunner {
       } catch (e) {
         debugPrint('[Download] mark task partial-fail failed: $e');
       }
+      DiagnosticLog.warn('download.task', 'Download task finished with errors',
+          metadata: {'task_id': task.taskId, 'book_name': task.bookName, 'success': successCount, 'fail': failCount, 'skip': skipCount});
     } else {
       try {
         await rust_api.updateDownloadTaskStatus(
@@ -245,6 +252,8 @@ class DownloadRunner {
       } catch (e) {
         debugPrint('[Download] mark task complete failed: $e');
       }
+      DiagnosticLog.info('download.task', 'Download task completed',
+          metadata: {'task_id': task.taskId, 'book_name': task.bookName, 'success': successCount});
     }
 
     await NotificationService.showDownloadComplete(

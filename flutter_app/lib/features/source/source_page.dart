@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/colors.dart';
+import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/providers.dart';
 import '../../core/services/source_validation_service.dart';
 import '../../core/widgets/safe_setstate.dart';
@@ -631,7 +632,11 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       final dbPath = await ref.read(dbPathProvider.future);
       await rust_api.setSourceEnabled(dbPath: dbPath, id: id, enabled: enabled);
       ref.invalidate(allSourcesProvider);
+      DiagnosticLog.info('source.edit', 'Source ${enabled ? "enabled" : "disabled"}',
+          metadata: {'source_id': id});
     } catch (e) {
+      DiagnosticLog.warn('source.edit', 'Failed to toggle source',
+          error: e, metadata: {'source_id': id});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('操作失败: $e')),
@@ -667,8 +672,11 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                 final dbPath = await ref.read(dbPathProvider.future);
                 await rust_api.createSource(dbPath: dbPath, name: name, url: url);
                 ref.invalidate(allSourcesProvider);
+                DiagnosticLog.info('source.add', 'Source added', metadata: {'source_name': name});
                 if (ctx.mounted) Navigator.pop(ctx);
               } catch (e) {
+                DiagnosticLog.warn('source.add', 'Failed to add source',
+                    error: e, metadata: {'source_name': name});
                 if (ctx.mounted) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     SnackBar(content: Text('添加失败: $e')),
@@ -725,6 +733,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                           json: json,
                         );
                         ref.invalidate(allSourcesProvider);
+                        DiagnosticLog.info('source.import', 'Imported sources from JSON',
+                            metadata: {'count': count});
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -732,6 +742,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                           );
                         }
                       } catch (e) {
+                        DiagnosticLog.warn('source.import', 'Import from JSON failed',
+                            error: e);
                         if (ctx.mounted) {
                           setDialogState(() => importing = false);
                         }
@@ -792,11 +804,17 @@ class _SourcePageState extends ConsumerState<SourcePage> {
     try {
       await ref.read(dbInitializedProvider.future);
       final dbPath = await ref.read(dbPathProvider.future);
+      final sourceId = source['id'] ?? '';
+      final sourceName = source['name'] ?? '书源';
       final resultJson = await rust_api.validateSourceFromDb(
         dbPath: dbPath,
-        sourceId: source['id'] ?? '',
+        sourceId: sourceId,
       );
       final List<dynamic> issues = const JsonDecoder().convert(resultJson);
+      final errorCount = issues.where((i) => (i as Map)['severity'] == 'error').length;
+      final warnCount = issues.where((i) => (i as Map)['severity'] == 'warning').length;
+      DiagnosticLog.info('source.validate', 'Validated source',
+          metadata: {'source_id': sourceId, 'source_name': sourceName, 'errors': errorCount, 'warnings': warnCount});
       if (!mounted) return;
       // 批次 21 (05-19): 即使静态校验通过 (issues 空)，仍弹 dialog 让用户能进入"实跑测试"。
       showDialog(
@@ -900,12 +918,15 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       final dbPath = await ref.read(dbPathProvider.future);
       await rust_api.deleteSource(dbPath: dbPath, id: id);
       ref.invalidate(allSourcesProvider);
+      DiagnosticLog.info('source.delete', 'Source deleted', metadata: {'source_id': id});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('书源已删除')),
         );
       }
     } catch (e) {
+      DiagnosticLog.warn('source.delete', 'Failed to delete source',
+          error: e, metadata: {'source_id': id});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('删除失败: $e')),
@@ -920,12 +941,14 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       final dbPath = await ref.read(dbPathProvider.future);
       final json = await rust_api.exportAllSources(dbPath: dbPath);
       await Clipboard.setData(ClipboardData(text: json));
+      DiagnosticLog.info('source.export', 'Exported all sources');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已复制所有书源 JSON 到剪贴板')),
         );
       }
     } catch (e) {
+      DiagnosticLog.warn('source.export', 'Export failed', error: e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('导出失败: $e')),
@@ -964,12 +987,15 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         json: json,
       );
       ref.invalidate(allSourcesProvider);
+      DiagnosticLog.info('source.import', 'Imported sources from file',
+          metadata: {'count': count});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('成功导入 $count 个书源')),
         );
       }
     } catch (e) {
+      DiagnosticLog.warn('source.import', 'File import failed', error: e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('文件导入失败: $e')),
@@ -1047,7 +1073,11 @@ class _SourcePageState extends ConsumerState<SourcePage> {
           SnackBar(content: Text('已删除 $count 个书源')),
         );
       }
+      DiagnosticLog.info('source.batch_delete', 'Batch deleted sources',
+          metadata: {'count': count});
     } catch (e) {
+      DiagnosticLog.warn('source.batch_delete', 'Batch delete failed',
+          error: e, metadata: {'count': count});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('批量删除失败: $e')),
@@ -1281,8 +1311,14 @@ class _LiveTestDialogState extends ConsumerState<_LiveTestDialog> {
         _stages = stages;
         _staticIssues = issues;
       });
+      final passCount = stages.where((s) => s['ok'] == true).length;
+      final failCount = stages.length - passCount;
+      DiagnosticLog.info('source.live_test', 'Live test completed',
+          metadata: {'source_id': widget.sourceId, 'source_name': widget.sourceName, 'stages': stages.length, 'passed': passCount, 'failed': failCount});
     } catch (e) {
       if (!mounted) return;
+      DiagnosticLog.warn('source.live_test', 'Live test failed',
+          error: e, metadata: {'source_id': widget.sourceId, 'source_name': widget.sourceName});
       setState(() {
         _running = false;
         _error = e.toString();

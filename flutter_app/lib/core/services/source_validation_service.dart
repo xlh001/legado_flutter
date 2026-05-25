@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../diagnostics/diagnostic_log.dart';
 import '../../src/rust/api.dart' as rust_api;
 
 /// 书源 Live Test 调用包装，via Riverpod provider 注入便于测试 fake。
@@ -29,12 +30,14 @@ class SourceValidationService {
     required String dbPath,
     required String sourceIdsJson,
     required String configJson,
-  }) {
-    return rust_api.batchCheckSources(
+  }) async {
+    final result = await rust_api.batchCheckSources(
       dbPath: dbPath,
       sourceIdsJson: sourceIdsJson,
       configJson: configJson,
     );
+    DiagnosticLog.info('source.batch_check', 'Batch source check completed');
+    return result;
   }
 }
 

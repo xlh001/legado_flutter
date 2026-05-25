@@ -1,0 +1,11 @@
+{"file": ".trellis/tasks/05-25-diagnostics-breadcrumbs/prd.md", "reason": "Requirements, target flows, acceptance criteria"}
+{"file": ".trellis/tasks/archive/2026-05/05-25-local-diagnostic-logging-system/prd.md", "reason": "Breadcrumb scope decisions from original design"}
+{"file": ".trellis/tasks/archive/2026-05/05-25-local-diagnostic-logging-system/research/repo-logging-surfaces.md", "reason": "Repo-specific surfaces mapped to breadcrumb targets"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "No secrets/credentials in breadcrumbs, forbidden payloads"}
+{"file": "flutter_app/lib/core/diagnostics/diagnostic_log.dart", "reason": "DiagnosticLog.info/warn/error/breadcrumb API"}
+{"file": "flutter_app/lib/core/router.dart", "reason": "GoRouter observer for navigation breadcrumbs"}
+{"file": "flutter_app/lib/features/source/source_page.dart", "reason": "Source CRUD catch blocks"}
+{"file": "flutter_app/lib/features/reader/reader_page.dart", "reason": "Reader lifecycle catch blocks"}
+{"file": "flutter_app/lib/features/settings/backup_page.dart", "reason": "Backup/WebDAV catch blocks"}
+{"file": "flutter_app/lib/core/download_runner.dart", "reason": "Download task transitions"}
+{"file": "flutter_app/lib/core/services/source_validation_service.dart", "reason": "Source validation breadcrumbs"}

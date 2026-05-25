@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/persistence/json_store.dart';
 import '../../core/providers.dart';
+import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/security/secure_storage.dart';
 import '../../core/services/backup_api_client.dart';
 import '../../core/services/file_picker_service.dart';
@@ -221,14 +222,19 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       }
       final dbPath = await _resolveDbPath();
       final outPath = '$dir/${_buildBackupFileName()}';
+      DiagnosticLog.info('backup.export', 'Local export started',
+          metadata: {'db_path_basename': dbPath.split('/').last});
       final api = ref.read(backupApiClientProvider);
       await api.exportBackup(dbPath: dbPath, outZipPath: outPath);
+      DiagnosticLog.info('backup.export', 'Local export completed',
+          metadata: {'out_path_basename': outPath.split('/').last});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已导出: $outPath')),
       );
     } catch (e) {
       if (!mounted) return;
+      DiagnosticLog.error('backup.export', 'Local export failed', error: e);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('导出失败: $e')),
       );
@@ -256,6 +262,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       final api = ref.read(backupApiClientProvider);
       final names = await api.validateZip(zipPath: path);
       if (!mounted) return;
+      DiagnosticLog.info('backup.import', 'Backup zip validated',
+          metadata: {'recognized_count': names.length});
       setState(() {
         _pickedZipPath = path;
         _pickedZipRecognized = names;
@@ -303,6 +311,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       final api = ref.read(backupApiClientProvider);
       final summaryJson = await api.importBackup(dbPath: dbPath, zipPath: path);
       if (!mounted) return;
+      DiagnosticLog.info('backup.import', 'Backup import completed');
       // 解析 ImportSummary：{books, groups, bookmarks, replace_rules, sources, errors}
       final label = formatImportSummaryLabel(
         summaryJson,
@@ -465,12 +474,15 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         password: cfg.password,
         fileName: fileName,
       );
+      DiagnosticLog.info('backup.webdav', 'WebDAV upload completed',
+          metadata: {'file_name': fileName});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已上传: $fileName')),
       );
     } catch (e) {
       if (!mounted) return;
+      DiagnosticLog.error('backup.webdav', 'WebDAV upload failed', error: e);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('上传失败: $e')),
       );
@@ -499,6 +511,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       );
       final List<dynamic> raw = jsonDecode(json) as List<dynamic>;
       final files = raw.cast<String>();
+      DiagnosticLog.info('backup.webdav', 'WebDAV list completed',
+          metadata: {'file_count': files.length});
       if (!mounted) return;
       if (files.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -531,6 +545,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         fileName: picked,
       );
       if (!mounted) return;
+      DiagnosticLog.info('backup.webdav', 'WebDAV download completed',
+          metadata: {'file_name': picked});
       // 解析 ImportSummary
       final label = formatImportSummaryLabel(
         summaryJson,
