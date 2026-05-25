@@ -61,6 +61,53 @@ Do **not** stash a global `LazyLock<Runtime>`. It conflicts with FRB's own runti
 
 If a function needs to stream progress to Dart (e.g. download progress), today the project uses a polling `FutureProvider.family` on the Flutter side that calls a `bridge::api::get_download_progress(task_id)` query. FRB's `Stream<Item>` support exists but isn't used yet; adopt it only if polling becomes a perf problem.
 
+## Scenario: Batch source validation stays sync
+
+### 1. Scope / Trigger
+- Trigger: a cross-language batch operation needs per-item progress UI, but the bridge still follows the project-wide sync FRB contract.
+- Do not switch to `Stream<Item>` just because the Flutter page is a progress page; the current batch validation flow consumes one final JSON array after `await`.
+
+### 2. Signatures
+- Rust: `pub fn batch_check_sources(db_path: String, source_ids_json: String, config_json: String) -> Result<String, String>`
+- Dart: `rust_api.batchCheckSources(dbPath: ..., sourceIdsJson: ..., configJson: ...) -> Future<String>`
+- `source_validation_service.dart` wraps the FRB call so the page never talks to `rust_api` directly.
+
+### 3. Contracts
+- `source_ids_json` is a JSON array string of source IDs.
+- `config_json` carries `keyword`, `stages`, `timeout_secs`, and `concurrency`.
+- Success payload is a JSON array string of per-source result objects.
+- Each result object carries `source_id`, `source_name`, `stages`, `total_latency_ms`, and optional `error`.
+- Flutter may render placeholder rows before the await completes, but all final data comes from one decoded array.
+
+### 4. Validation & Error Matrix
+- Invalid `source_ids_json` or `config_json` JSON -> Rust returns `Err(String)`.
+- Wrong primitive shape in `config_json` -> Rust returns `Err(String)`; Flutter should surface the message and stop loading.
+- Non-array success payload -> Flutter parse error; treat as batch failure, not a partial success.
+- DB write failure during per-source persistence -> Rust returns `Err(String)`; do not silently swallow partial writes.
+
+### 5. Good/Base/Bad Cases
+- Good: open progress page, show selected rows as pending, await one final JSON array, merge the decoded rows, then invalidate the source list.
+- Base: no intermediate stream events, just a final array after the FRB future resolves.
+- Bad: `rust_api.batchCheckSources(...).listen(...)` or a `StreamProvider` wrapper for this batch flow.
+
+### 6. Tests Required
+- Flutter widget test for `SourceCheckProgressPage` with a fake service returning a final JSON array string.
+- Analyzer coverage for the service wrapper and route wiring.
+- Bridge build guard if the FRB signature changes (`cargo build -p bridge`).
+
+### 7. Wrong vs Correct
+#### Wrong
+```dart
+rust_api.batchCheckSources(...).listen((json) {
+  // Treat batch validation like a stream.
+});
+```
+#### Correct
+```dart
+final json = await sourceValidationService.batchCheckSources(...);
+final decoded = jsonDecode(json) as List<dynamic>;
+```
+
 ## Generated Artifacts
 
 These files are generated and must not be hand-edited (except `frb_generated.rs` which has the maintenance contract above):

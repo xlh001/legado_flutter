@@ -141,6 +141,8 @@ const REQUIRED_WIRE_FN_FRAGMENTS: &[&str] = &[
     "wire__crate__api__delete_book_with_file_impl",
     // BATCH-27e (add_url URL→源 pattern matching) — 1 个 wire fn (funcId 118)
     "wire__crate__api__find_book_source_for_url_impl",
+    // 批次 check-sources (05-24) — 1 个 wire fn (funcId 119)
+    "wire__crate__api__batch_check_sources_impl",
 ];
 
 const REQUIRED_DISPATCHER_FRAGMENTS: &[&str] = &[
@@ -234,6 +236,7 @@ const REQUIRED_DISPATCHER_FRAGMENTS: &[&str] = &[
     "        115 =>",
     "        117 =>",
     "        118 =>",
+    "        119 =>",
 ];
 
 /// R3: the dispatcher default arms must surface the unknown funcId

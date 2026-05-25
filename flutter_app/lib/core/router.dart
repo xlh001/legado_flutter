@@ -15,6 +15,7 @@ import '../features/settings/read_stats_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/webdav_config_page.dart';
 import '../features/source/source_page.dart';
+import '../features/source/source_check_progress_page.dart';
 import '../features/download/download_page.dart';
 import '../features/replace_rule/replace_rule_page.dart';
 import '../features/rss/rss_article_list_page.dart';
@@ -84,6 +85,16 @@ final router = GoRouter(
     GoRoute(
       path: '/sources',
       builder: (context, state) => const SourcePage(),
+    ),
+    GoRoute(
+      path: '/source-check-progress',
+      builder: (context, state) {
+        final args = state.extra;
+        if (args is SourceCheckProgressArgs) {
+          return SourceCheckProgressPage(args: args);
+        }
+        return const SourcePage();
+      },
     ),
     GoRoute(
       path: '/downloads',

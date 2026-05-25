@@ -23,6 +23,19 @@ class SourceValidationService {
       keyword: keyword,
     );
   }
+
+  /// 批量校验书源。返回 `Vec<SourceCheckProgress>` 的 JSON 字符串。
+  Future<String> batchCheckSources({
+    required String dbPath,
+    required String sourceIdsJson,
+    required String configJson,
+  }) {
+    return rust_api.batchCheckSources(
+      dbPath: dbPath,
+      sourceIdsJson: sourceIdsJson,
+      configJson: configJson,
+    );
+  }
 }
 
 final sourceValidationServiceProvider = Provider<SourceValidationService>(

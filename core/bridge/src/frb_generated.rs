@@ -2772,6 +2772,51 @@ fn wire__crate__api__validate_source_live_impl(
         },
     )
 }
+// 批次 check-sources (05-24): funcId 119 — batch_check_sources(db_path, source_ids_json, config_json)
+//   -> Result<String, String> (async, JSON of Vec<SourceCheckProgress>)
+fn wire__crate__api__batch_check_sources_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "batch_check_sources",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_db_path = <String>::sse_decode(&mut deserializer);
+            let api_source_ids_json = <String>::sse_decode(&mut deserializer);
+            let api_config_json = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::batch_check_sources(
+                            api_db_path,
+                            api_source_ids_json,
+                            api_config_json,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__get_all_books_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -4588,6 +4633,8 @@ fn pde_ffi_dispatcher_primary_impl(
         115 => wire__crate__api__set_book_can_update_impl(port, ptr, rust_vec_len, data_len),
         117 => wire__crate__api__delete_book_with_file_impl(port, ptr, rust_vec_len, data_len),
         118 => wire__crate__api__find_book_source_for_url_impl(port, ptr, rust_vec_len, data_len),
+        // 批次 check-sources (05-24) — 手动 wire fn 注册
+        119 => wire__crate__api__batch_check_sources_impl(port, ptr, rust_vec_len, data_len),
         // R3: codegen default branch hit at runtime means Rust and Dart
         // have inconsistent funcId tables. build.rs catches this at
         // compile time when both sides are visible (R3 cross-check),

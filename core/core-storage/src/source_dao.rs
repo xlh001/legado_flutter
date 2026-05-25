@@ -24,7 +24,9 @@ pub(crate) const BOOK_SOURCE_COLUMNS: &str = "id, name, url, source_type, group_
     rule_search, rule_book_info, rule_toc, rule_content, \
     login_url, login_ui, login_check_js, header, js_lib, cover_decode_js, book_url_pattern, \
     rule_explore, explore_url, enabled_explore, last_update_time, book_source_comment, \
-    concurrent_rate, variable_comment, explore_screen, created_at, updated_at";
+    concurrent_rate, variable_comment, explore_screen, \
+    respond_time, last_check_error, last_check_at, \
+    created_at, updated_at";
 
 /// 单条 SQL，同时被 [`SourceDao::upsert`] 和 [`SourceDao::batch_insert`] 使用，
 /// 避免两份 ON CONFLICT 列表漂移（之前 upsert 缺 login_ui / login_check_js /
@@ -34,8 +36,10 @@ const SOURCE_UPSERT_SQL: &str = "INSERT INTO book_sources (
         rule_search, rule_book_info, rule_toc, rule_content,
         login_url, login_ui, login_check_js, header, js_lib, cover_decode_js, book_url_pattern,
         rule_explore, explore_url, enabled_explore, last_update_time, book_source_comment,
-        concurrent_rate, variable_comment, explore_screen, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        concurrent_rate, variable_comment, explore_screen,
+        respond_time, last_check_error, last_check_at,
+        created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         url = excluded.url,
@@ -63,6 +67,9 @@ const SOURCE_UPSERT_SQL: &str = "INSERT INTO book_sources (
         concurrent_rate = excluded.concurrent_rate,
         variable_comment = excluded.variable_comment,
         explore_screen = excluded.explore_screen,
+        respond_time = excluded.respond_time,
+        last_check_error = excluded.last_check_error,
+        last_check_at = excluded.last_check_at,
         updated_at = excluded.updated_at";
 
 /// 书源 DAO
@@ -139,6 +146,9 @@ impl<'a> SourceDao<'a> {
                 source.concurrent_rate,
                 source.variable_comment,
                 source.explore_screen,
+                source.respond_time,
+                source.last_check_error,
+                source.last_check_at,
                 source.created_at,
                 source.updated_at,
             ],
@@ -295,6 +305,9 @@ impl<'a> SourceDao<'a> {
                     source.concurrent_rate,
                     source.variable_comment,
                     source.explore_screen,
+                    source.respond_time,
+                    source.last_check_error,
+                    source.last_check_at,
                     source.created_at,
                     source.updated_at,
                 ],
@@ -364,6 +377,9 @@ impl<'a> SourceDao<'a> {
             concurrent_rate: None,
             variable_comment: None,
             explore_screen: None,
+            respond_time: 0,
+            last_check_error: None,
+            last_check_at: 0,
             created_at: now,
             updated_at: now,
         };
@@ -462,8 +478,11 @@ fn book_source_from_row(row: &rusqlite::Row) -> SqlResult<BookSource> {
         concurrent_rate: row.get(24)?,
         variable_comment: row.get(25)?,
         explore_screen: row.get(26)?,
-        created_at: row.get(27)?,
-        updated_at: row.get(28)?,
+        respond_time: row.get(27)?,
+        last_check_error: row.get(28)?,
+        last_check_at: row.get(29)?,
+        created_at: row.get(30)?,
+        updated_at: row.get(31)?,
     })
 }
 
@@ -738,6 +757,9 @@ fn legado_to_storage(source: &LegadoBookSource) -> Result<BookSource, String> {
         concurrent_rate: source.concurrent_rate.clone(),
         variable_comment: source.variable_comment.clone(),
         explore_screen: source.explore_screen,
+        respond_time: 0,
+        last_check_error: None,
+        last_check_at: 0,
         created_at: now,
         updated_at: now,
     })

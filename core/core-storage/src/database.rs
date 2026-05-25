@@ -7,7 +7,7 @@ use rusqlite::{Connection, Result as SqlResult};
 use tracing::{debug, info, warn};
 
 /// 数据库版本（用于迁移，通过 PRAGMA user_version 持久化）
-const DB_VERSION: i32 = 12;
+const DB_VERSION: i32 = 13;
 
 /// 初始化数据库
 /// 创建所有必要的表，如果数据库已存在则检查是否需要迁移
@@ -146,6 +146,11 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
             variable_comment TEXT,
             explore_screen INTEGER,
             
+            -- 校验结果持久化 (v13 / 批次 check-sources)
+            respond_time INTEGER DEFAULT 0,
+            last_check_error TEXT,
+            last_check_at INTEGER DEFAULT 0,
+
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )",
@@ -519,6 +524,7 @@ fn migrate_database(conn: &mut Connection, from_version: i32, to_version: i32) -
             10 => migrate_v10(&tx)?,
             11 => migrate_v11(&tx)?,
             12 => migrate_v12(&tx)?,
+            13 => migrate_v13(&tx)?,
             _ => {
                 return Err(rusqlite::Error::SqliteFailure(
                     rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
@@ -973,6 +979,45 @@ fn migrate_v12(conn: &Connection) -> SqlResult<()> {
     Ok(())
 }
 
+/// 版本 13 迁移：book_sources 表加 3 列（批次 check-sources / 05-24）
+///
+/// 对齐原 Legado `CheckSource.kt` 校验结果持久化：
+/// - `respond_time INTEGER DEFAULT 0` — 最近一次校验的总耗时（ms）
+/// - `last_check_error TEXT` — 最近一次校验的错误信息（成功时为 NULL）
+/// - `last_check_at INTEGER DEFAULT 0` — 最近一次校验的 unix 时间戳（秒）
+///
+/// 防御：每列先 `pragma_table_info` 检测再 ALTER，重跑幂等。
+fn migrate_v13(conn: &Connection) -> SqlResult<()> {
+    info!("v13: book_sources 加 respond_time / last_check_error / last_check_at（批次 check-sources）");
+
+    // 防御：测试 fixture 可能只有精简 schema 没有 book_sources 表
+    // （如 test_migration_from_v9_rebuilds_replace_rules），跳过。
+    if !table_exists(conn, "book_sources")? {
+        debug!("v13: book_sources 表不存在，跳过列添加");
+        return Ok(());
+    }
+
+    for (col, col_type) in [
+        ("respond_time", "INTEGER DEFAULT 0"),
+        ("last_check_error", "TEXT"),
+        ("last_check_at", "INTEGER DEFAULT 0"),
+    ] {
+        let has: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('book_sources') WHERE name = ?1",
+            rusqlite::params![col],
+            |r| r.get(0),
+        )?;
+        if !has {
+            conn.execute(
+                &format!("ALTER TABLE book_sources ADD COLUMN {} {}", col, col_type),
+                [],
+            )?;
+        }
+    }
+    info!("v13: 迁移完成（批次 check-sources）");
+    Ok(())
+}
+
 /// 批次 16 (v12) 4 张 RSS 表 — fresh install + migrate 共用。
 ///
 /// 全 `IF NOT EXISTS`，可重复调用。表结构对齐原 Legado RssSource (31)
@@ -1411,6 +1456,9 @@ mod tests {
                 concurrent_rate: None,
                 variable_comment: None,
                 explore_screen: None,
+                respond_time: 0,
+                last_check_error: None,
+                last_check_at: 0,
                 created_at: now,
                 updated_at: now,
             },
@@ -1442,6 +1490,9 @@ mod tests {
                 concurrent_rate: None,
                 variable_comment: None,
                 explore_screen: None,
+                respond_time: 0,
+                last_check_error: None,
+                last_check_at: 0,
                 created_at: now,
                 updated_at: now,
             },
@@ -1637,6 +1688,9 @@ mod tests {
             concurrent_rate: None,
             variable_comment: None,
             explore_screen: None,
+            respond_time: 0,
+            last_check_error: None,
+            last_check_at: 0,
             created_at: now,
             updated_at: now,
         };

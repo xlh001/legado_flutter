@@ -90,6 +90,33 @@ Existing services in `core/services/` (as of BATCH-20):
 - `file_picker_service.dart` — file_picker wrapper (directory + zip file pick)
 - `source_validation_service.dart` — `rust_api.validateSourceLive` wrapper for source liveness test
 
+### Convention: Batch FRB wrappers live in services
+
+**What**: When a feature needs a cross-layer batch FRB call, add a small service wrapper in `core/services/` and inject it with `ProviderScope.overrides` in tests.
+
+**Why**: The page stays focused on UI state, and the wrapper keeps the FRB call shape in one place. This also avoids a direct `rust_api` dependency in the widget tree.
+
+**Example**:
+```dart
+class SourceValidationService {
+  const SourceValidationService();
+
+  Future<String> batchCheckSources({
+    required String dbPath,
+    required String sourceIdsJson,
+    required String configJson,
+  }) {
+    return rust_api.batchCheckSources(
+      dbPath: dbPath,
+      sourceIdsJson: sourceIdsJson,
+      configJson: configJson,
+    );
+  }
+}
+```
+
+**Related**: `source_validation_service.dart`, `source_check_progress_page.dart`.
+
 Naming conventions:
 
 - File: `<feature>_<role>.dart` (e.g. `backup_api_client.dart`, not `backup_client.dart`).
@@ -128,6 +155,24 @@ Rules:
 - Always invalidate **after** the FRB call returns (await first).
 - Invalidate every provider whose result depends on the mutated row, not just the most obvious one. Backups touch 5 invalidations (allBooks / booksByGroup / bookGroups / allSources / allReplaceRules) — see `features/settings/backup_page.dart` for the reference list.
 - Family providers must be invalidated by exact parameter when known, otherwise by whole family. Prefer parameter-precise invalidation.
+
+### Convention: pop result then invalidate from caller state
+
+**What**: If a route returns from `context.push(...)`, do the provider invalidation in the caller after the returned future completes and only if the caller is still mounted.
+
+**Why**: The route owns its own UI lifetime. The caller should not invalidate while the popped route is still active or after the caller has already unmounted.
+
+**Example**:
+```dart
+final args = await showDialog<SourceCheckProgressArgs>(...);
+if (args == null) return;
+if (!mounted) return;
+await context.push('/source-check-progress', extra: args);
+if (!mounted) return;
+ref.invalidate(allSourcesProvider);
+```
+
+**Related**: `source_page.dart`, `async-and-mounted.md`.
 
 ## Read vs Watch
 

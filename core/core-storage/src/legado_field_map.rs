@@ -603,6 +603,9 @@ pub fn legado_source_to_storage_source(legado: &Value) -> Result<BookSource, Str
             .get("exploreScreen")
             .and_then(|v| v.as_i64())
             .map(|n| n as i32),
+        respond_time: 0,
+        last_check_error: None,
+        last_check_at: 0,
         created_at: now,
         updated_at: now,
     })

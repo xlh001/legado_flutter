@@ -915,6 +915,115 @@ pub async fn validate_source_live(
     serde_json::to_string(&report).map_err(|e| format!("序列化失败: {}", e))
 }
 
+/// 批量书源实跑校验（批次 check-sources / PR2, funcId 119）。
+///
+/// `source_ids_json` 是 JSON 字符串数组，例如 `["id1","id2"]`。
+/// `config_json` 是 [`core_source::CheckConfig`] 的 JSON 字符串。
+/// 返回 JSON 数组 `Vec<SourceCheckProgress>` — 每个元素是一个源的校验
+/// 结果（stages + latency + error）。最后一个元素 `is_done = true`。
+///
+/// 每个源跑完后同时写回 `book_sources` 表的 `respond_time` /
+/// `last_check_error` / `last_check_at`。
+///
+/// 并发受 config.concurrency 控制（默认 8）；单源超时 config.timeout_secs
+/// （默认 180s）。
+pub async fn batch_check_sources(
+    db_path: String,
+    source_ids_json: String,
+    config_json: String,
+) -> Result<String, String> {
+    let source_ids: Vec<String> = serde_json::from_str(&source_ids_json)
+        .map_err(|e| format!("解析 source_ids JSON 失败: {}", e))?;
+    let config: core_source::CheckConfig = serde_json::from_str(&config_json)
+        .map_err(|e| format!("解析 CheckConfig JSON 失败: {}", e))?;
+
+    // Load all sources from DB
+    let storage_sources: Vec<core_storage::models::BookSource> = {
+        let mut conn = open_db(&db_path)?;
+        let dao = core_storage::source_dao::SourceDao::new(&mut conn);
+        source_ids
+            .iter()
+            .filter_map(|id| dao.get_by_id(id).ok().flatten())
+            .collect()
+    };
+
+    if storage_sources.is_empty() {
+        return Err("没有找到任何书源".to_string());
+    }
+
+    // Convert to core_source types
+    let mut sources: Vec<core_source::types::BookSource> =
+        Vec::with_capacity(storage_sources.len());
+    let mut results: Vec<core_source::SourceCheckProgress> =
+        Vec::with_capacity(storage_sources.len());
+
+    for s in &storage_sources {
+        match storage_to_source_book_source(s) {
+            Ok(src) => sources.push(src),
+            Err(e) => {
+                results.push(core_source::SourceCheckProgress {
+                    source_id: s.id.clone(),
+                    source_name: s.name.clone(),
+                    stages: vec![],
+                    total_latency_ms: 0,
+                    error: Some(e),
+                    is_done: false,
+                });
+            }
+        }
+    }
+
+    if sources.is_empty() {
+        // All sources failed conversion; return what we have (errors only)
+        if let Some(last) = results.last_mut() {
+            last.is_done = true;
+        }
+        return serde_json::to_string(&results).map_err(|e| format!("序列化失败: {}", e));
+    }
+
+    let db_path_clone = db_path.clone();
+    let results_arc = std::sync::Arc::new(std::sync::Mutex::new(results));
+    let results_for_closure = results_arc.clone();
+
+    core_source::batch_run_live_test(
+        sources,
+        &config,
+        std::sync::Arc::new(move |progress| {
+            // Write back to DB (best effort, failure does not interrupt the batch)
+            let respond_time = if progress
+                .stages
+                .iter()
+                .all(|s| s.ok)
+            {
+                progress.total_latency_ms
+            } else {
+                0
+            };
+            let error = progress.error.as_deref();
+            if let Ok(conn) = core_storage::database::get_connection(&db_path_clone) {
+                let now = chrono::Utc::now().timestamp();
+                let _ = conn.execute(
+                    "UPDATE book_sources SET respond_time = ?, last_check_error = ?, \
+                     last_check_at = ?, updated_at = ? WHERE id = ?",
+                    rusqlite::params![respond_time, error, now, now, progress.source_id],
+                );
+            }
+            // Push into shared vec
+            if let Ok(mut guard) = results_for_closure.lock() {
+                guard.push(progress);
+            }
+        }),
+    )
+    .await;
+
+    // Unwrap the Arc<Mutex<Vec>> back to Vec
+    let results = std::sync::Arc::into_inner(results_arc)
+        .expect("Arc should have exactly one reference")
+        .into_inner()
+        .expect("Mutex should not be poisoned");
+    serde_json::to_string(&results).map_err(|e| format!("序列化失败: {}", e))
+}
+
 /// 导出所有书源为 Legado 兼容 JSON 数组（camelCase 格式）
 pub fn export_all_sources(db_path: String) -> Result<String, String> {
     let mut conn = open_db(&db_path)?;

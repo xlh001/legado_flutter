@@ -5,12 +5,29 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/colors.dart';
 import '../../core/providers.dart';
 import '../../core/services/source_validation_service.dart';
 import '../../core/widgets/safe_setstate.dart';
 import '../../src/rust/api.dart' as rust_api;
+import 'source_check_progress_page.dart';
+
+enum _SourceSortMode { defaults, respondTimeAsc, lastCheckAtDesc }
+
+extension _SourceSortModeX on _SourceSortMode {
+  String get label {
+    switch (this) {
+      case _SourceSortMode.defaults:
+        return '默认排序';
+      case _SourceSortMode.respondTimeAsc:
+        return '按延迟升序';
+      case _SourceSortMode.lastCheckAtDesc:
+        return '按最后校验时间降序';
+    }
+  }
+}
 
 /// `@visibleForTesting` — 让 widget test 能直接弹出 [`_LiveTestDialog`] 而不必
 /// 走完整 SourcePage → 列表 tap → 校验规则的链路（避免连 FRB 真实调用）。
@@ -50,6 +67,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
   final Set<String> _selectedIds = {};
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  _SourceSortMode _sortMode = _SourceSortMode.defaults;
+  bool _failuresOnly = false;
 
   @override
   void dispose() {
@@ -119,12 +138,14 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         IconButton(
           icon: const Icon(Icons.sort_by_alpha),
           tooltip: '排序',
-          onPressed: () => ref.invalidate(allSourcesProvider),
+          onPressed: () => _showSortMenu(context),
         ),
         IconButton(
-          icon: const Icon(Icons.filter_list),
-          tooltip: '筛选',
-          onPressed: () => ref.invalidate(allSourcesProvider),
+          icon: Icon(
+            _failuresOnly ? Icons.filter_alt : Icons.filter_list,
+          ),
+          tooltip: _failuresOnly ? '仅看失败' : '筛选',
+          onPressed: () => _showFilterMenu(context),
         ),
         IconButton(
           icon: const Icon(Icons.file_upload_outlined),
@@ -194,11 +215,14 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                   color: cs.primary,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '全选 ($_selectedIds.length/$total)',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onSurfaceVariant,
+                Flexible(
+                  child: Text(
+                    '全选 (${_selectedIds.length}/$total)',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -215,7 +239,21 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    final sources =
+                        ref.read(allSourcesProvider).valueOrNull ?? [];
+                    for (final s in sources) {
+                      final id = s['id'];
+                      if (id is String && id.isNotEmpty) {
+                        if (_selectedIds.contains(id)) {
+                          _selectedIds.remove(id);
+                        } else {
+                          _selectedIds.add(id);
+                        }
+                      }
+                    }
+                    setState(() {});
+                  },
                   child: const Text('反选', style: TextStyle(fontSize: 13)),
                 ),
                 const SizedBox(width: 8),
@@ -242,7 +280,9 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                   icon: const Icon(Icons.more_vert, size: 20),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: () {},
+                  onPressed: _selectedIds.isEmpty
+                      ? null
+                      : () => _showBatchSelectionMenu(context),
                 ),
               ],
             ),
@@ -250,6 +290,105 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         ],
       ),
     );
+  }
+
+  void _showSortMenu(BuildContext context) {
+    showMenu<_SourceSortMode>(
+      context: context,
+      position: const RelativeRect.fromLTRB(1000, 100, 0, 0),
+      items: [
+        for (final mode in _SourceSortMode.values)
+          PopupMenuItem(
+            value: mode,
+            child: Row(
+              children: [
+                Icon(
+                  _sortMode == mode ? Icons.check : Icons.sort,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(mode.label),
+              ],
+            ),
+          ),
+      ],
+    ).then((mode) {
+      if (mode == null || mode == _sortMode) return;
+      safeSetState(() => _sortMode = mode);
+    });
+  }
+
+  void _showFilterMenu(BuildContext context) {
+    showMenu<bool>(
+      context: context,
+      position: const RelativeRect.fromLTRB(1000, 100, 0, 0),
+      items: [
+        PopupMenuItem(
+          value: false,
+          child: Row(
+            children: [
+              Icon(!_failuresOnly ? Icons.check : Icons.list, size: 20),
+              const SizedBox(width: 12),
+              const Text('全部'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: true,
+          child: Row(
+            children: [
+              Icon(_failuresOnly ? Icons.check : Icons.error_outline, size: 20),
+              const SizedBox(width: 12),
+              const Text('仅看失败'),
+            ],
+          ),
+        ),
+      ],
+    ).then((failuresOnly) {
+      if (failuresOnly == null || failuresOnly == _failuresOnly) return;
+      safeSetState(() => _failuresOnly = failuresOnly);
+    });
+  }
+
+  void _showBatchSelectionMenu(BuildContext context) {
+    showMenu<String>(
+      context: context,
+      position: const RelativeRect.fromLTRB(1000, 1000, 0, 0),
+      items: const [
+        PopupMenuItem(
+          value: 'batch_check',
+          child: Row(
+            children: [
+              Icon(Icons.fact_check_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('批量校验'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value != 'batch_check' || !mounted) return;
+      _showBatchCheckConfigDialog(context);
+    });
+  }
+
+  Future<void> _showBatchCheckConfigDialog(BuildContext context) async {
+    final sources = ref.read(allSourcesProvider).valueOrNull ?? [];
+    final selectedSources = sources
+        .where((s) => _selectedIds.contains(s['id']))
+        .map((s) => Map<String, dynamic>.from(s))
+        .toList();
+    if (selectedSources.isEmpty) return;
+
+    final args = await showDialog<SourceCheckProgressArgs>(
+      context: context,
+      builder: (ctx) => _BatchCheckConfigDialog(sources: selectedSources),
+    );
+    if (args == null) return;
+    if (!mounted) return;
+    await context.push('/source-check-progress', extra: args);
+    if (!mounted) return;
+    ref.invalidate(allSourcesProvider);
   }
 
   void _showMoreMenu(BuildContext context) {
@@ -295,14 +434,17 @@ class _SourcePageState extends ConsumerState<SourcePage> {
   }
 
   Widget _buildSourceList(BuildContext context, List<Map<String, dynamic>> sources) {
-    final filtered = _searchQuery.isEmpty
-        ? sources
-        : sources.where((s) {
-            final name = (s['name'] as String?)?.toLowerCase() ?? '';
-            return name.contains(_searchQuery.toLowerCase());
-          }).toList();
+    final filtered = (_searchQuery.isEmpty
+            ? sources
+            : sources.where((s) {
+                final name = (s['name'] as String?)?.toLowerCase() ?? '';
+                return name.contains(_searchQuery.toLowerCase());
+              }).toList())
+        .where((s) => !_failuresOnly || _sourceError(s).isNotEmpty)
+        .toList();
+    _sortSources(filtered);
 
-    if (sources.isEmpty) {
+    if (filtered.isEmpty) {
       return const Center(child: Text('暂无书源，点击右下角添加'));
     }
     return ListView.builder(
@@ -316,6 +458,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         final id = source['id'] is String ? source['id'] as String : '';
         final validId = id.isNotEmpty;
         final enabled = source['enabled'] == true;
+        final respondTime = _sourceInt(source, 'respond_time');
+        final lastError = _sourceError(source);
         final cs = Theme.of(context).colorScheme;
 
         Widget leading;
@@ -373,6 +517,37 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                   ),
                 ),
                 if (!_selectMode) ...[
+                  if (respondTime > 0) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${respondTime}ms',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  if (lastError.isNotEmpty) ...[
+                    Tooltip(
+                      message: lastError,
+                      child: Icon(
+                        Icons.error_outline,
+                        color: context.al.destructive,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   Switch(
                     value: enabled,
                     onChanged:
@@ -414,6 +589,40 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         );
       },
     );
+  }
+
+  int _sourceInt(Map<String, dynamic> source, String key) {
+    final value = source[key];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return 0;
+  }
+
+  String _sourceError(Map<String, dynamic> source) {
+    return (source['last_check_error'] as String?)?.trim() ?? '';
+  }
+
+  void _sortSources(List<Map<String, dynamic>> sources) {
+    switch (_sortMode) {
+      case _SourceSortMode.defaults:
+        return;
+      case _SourceSortMode.respondTimeAsc:
+        sources.sort((a, b) {
+          final av = _sourceInt(a, 'respond_time');
+          final bv = _sourceInt(b, 'respond_time');
+          if (av == 0 && bv == 0) return 0;
+          if (av == 0) return 1;
+          if (bv == 0) return -1;
+          return av.compareTo(bv);
+        });
+        return;
+      case _SourceSortMode.lastCheckAtDesc:
+        sources.sort(
+          (a, b) => _sourceInt(b, 'last_check_at')
+              .compareTo(_sourceInt(a, 'last_check_at')),
+        );
+        return;
+    }
   }
 
   Future<void> _toggleSource(String id, bool enabled) async {
@@ -830,6 +1039,7 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       for (final id in _selectedIds) {
         await rust_api.deleteSource(dbPath: dbPath, id: id);
       }
+      if (!mounted) return;
       _exitSelectMode();
       ref.invalidate(allSourcesProvider);
       if (mounted) {
@@ -844,6 +1054,138 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         );
       }
     }
+  }
+}
+
+class _BatchCheckConfigDialog extends StatefulWidget {
+  final List<Map<String, dynamic>> sources;
+
+  const _BatchCheckConfigDialog({required this.sources});
+
+  @override
+  State<_BatchCheckConfigDialog> createState() =>
+      _BatchCheckConfigDialogState();
+}
+
+class _BatchCheckConfigDialogState extends State<_BatchCheckConfigDialog> {
+  late final TextEditingController _keywordCtrl;
+  final Set<String> _stages = {'search', 'book_info', 'toc', 'content'};
+  double _timeoutSecs = 180;
+  double _concurrency = 8;
+
+  static const Map<String, String> _stageLabels = {
+    'search': '搜索',
+    'book_info': '书籍详情',
+    'toc': '目录',
+    'content': '正文',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _keywordCtrl = TextEditingController(text: '我的');
+  }
+
+  @override
+  void dispose() {
+    _keywordCtrl.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    if (_stages.isEmpty) return;
+    final ids = <String>[];
+    for (final source in widget.sources) {
+      final id = source['id'];
+      if (id is String && id.isNotEmpty) ids.add(id);
+    }
+    if (ids.isEmpty) return;
+    Navigator.of(context).pop(
+      SourceCheckProgressArgs(
+        sources: widget.sources,
+        sourceIds: ids,
+        keyword: _keywordCtrl.text.trim().isEmpty
+            ? '我的'
+            : _keywordCtrl.text.trim(),
+        stages: _stages.toList(growable: false),
+        timeoutSecs: _timeoutSecs.round(),
+        concurrency: _concurrency.round(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('批量校验 ${widget.sources.length} 个书源'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _keywordCtrl,
+              decoration: const InputDecoration(
+                labelText: '搜索关键字',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('校验阶段', style: Theme.of(context).textTheme.labelLarge),
+            for (final entry in _stageLabels.entries)
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(entry.value),
+                value: _stages.contains(entry.key),
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked == true) {
+                      _stages.add(entry.key);
+                    } else {
+                      _stages.remove(entry.key);
+                    }
+                  });
+                },
+              ),
+            const SizedBox(height: 8),
+            Text('超时：${_timeoutSecs.round()} 秒'),
+            Slider(
+              min: 5,
+              max: 300,
+              divisions: 59,
+              value: _timeoutSecs,
+              label: '${_timeoutSecs.round()}s',
+              onChanged: (v) => setState(() => _timeoutSecs = v),
+            ),
+            Text('并发数：${_concurrency.round()}'),
+            Slider(
+              min: 1,
+              max: 16,
+              divisions: 15,
+              value: _concurrency,
+              label: '${_concurrency.round()}',
+              onChanged: (v) => setState(() => _concurrency = v),
+            ),
+            if (_stages.isEmpty)
+              Text(
+                '至少选择一个阶段',
+                style: TextStyle(color: context.al.destructive),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _stages.isEmpty ? null : _start,
+          child: const Text('开始校验'),
+        ),
+      ],
+    );
   }
 }
 

@@ -70,6 +70,32 @@ pub struct LiveTestReport {
     pub static_issues: Vec<ValidationIssue>,
 }
 
+/// 批量校验配置 — 对齐原版 legado CheckSource 设置面板。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckConfig {
+    pub keyword: String,
+    /// 要跑的 stage 名称集合（"search"/"book_info"/"toc"/"content"）
+    pub stages: std::collections::HashSet<String>,
+    /// 单源超时（秒）
+    pub timeout_secs: u64,
+    /// 并发数
+    pub concurrency: usize,
+}
+
+/// 批量校验中单个书源的进度快照，通过 FRB 发给 Dart。
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceCheckProgress {
+    pub source_id: String,
+    pub source_name: String,
+    pub stages: Vec<LiveTestStage>,
+    pub total_latency_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// true 表示这是最后一个源（让 Dart 端知道批次结束）
+    #[serde(default)]
+    pub is_done: bool,
+}
+
 /// 验证书源配置是否有效，返回结构化结果
 pub fn validate_book_source(source: &BookSource) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
@@ -244,6 +270,241 @@ pub async fn run_live_test(source: &BookSource, keyword: &str) -> LiveTestReport
     LiveTestReport {
         stages,
         static_issues,
+    }
+}
+
+/// 带 stage 过滤的 live test。只跑 `stages_filter` 里指定的 stage。
+/// 内部复用 [`BookSourceParser`] 的 search/get_book_info/get_chapters/
+/// get_chapter_content 4 路，与 [`run_live_test`] 行为一致。
+async fn run_live_test_filtered(
+    source: &BookSource,
+    keyword: &str,
+    stages_filter: &std::collections::HashSet<String>,
+    parser: &BookSourceParser,
+) -> LiveTestReport {
+    let static_issues = validate_book_source(source);
+    let mut stages_out: Vec<LiveTestStage> = Vec::new();
+
+    let mut next_book_url: Option<String> = None;
+    let mut next_chapters_url: Option<String> = None;
+    let mut next_chapter_url: Option<String> = None;
+
+    // Stage 1: search
+    if stages_filter.contains("search") {
+        let t = std::time::Instant::now();
+        match parser.search(source, keyword).await {
+            Ok(results) if !results.is_empty() => {
+                let r = &results[0];
+                next_book_url = Some(r.book_url.clone());
+                stages_out.push(LiveTestStage {
+                    stage: "search".into(),
+                    ok: true,
+                    latency_ms: t.elapsed().as_millis() as i64,
+                    sample: Some(format!("第一本: {} / {}", r.name, r.author)),
+                    error: None,
+                });
+            }
+            Ok(_) => stages_out.push(LiveTestStage {
+                stage: "search".into(),
+                ok: false,
+                latency_ms: t.elapsed().as_millis() as i64,
+                sample: None,
+                error: Some("无搜索结果".into()),
+            }),
+            Err(e) => stages_out.push(LiveTestStage {
+                stage: "search".into(),
+                ok: false,
+                latency_ms: t.elapsed().as_millis() as i64,
+                sample: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    // Stage 2: book_info
+    if stages_filter.contains("book_info") {
+        let book_url_for_info = next_book_url.clone().unwrap_or_else(|| {
+            format!("{}/book/test", source.url.trim_end_matches('/'))
+        });
+        let t = std::time::Instant::now();
+        match parser.get_book_info(source, &book_url_for_info).await {
+            Ok(detail) => {
+                next_chapters_url = detail.chapters_url.clone();
+                stages_out.push(LiveTestStage {
+                    stage: "book_info".into(),
+                    ok: true,
+                    latency_ms: t.elapsed().as_millis() as i64,
+                    sample: Some(format!("{} / {}", detail.name, detail.author)),
+                    error: None,
+                });
+            }
+            Err(e) => stages_out.push(LiveTestStage {
+                stage: "book_info".into(),
+                ok: false,
+                latency_ms: t.elapsed().as_millis() as i64,
+                sample: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    // Stage 3: toc
+    if stages_filter.contains("toc") {
+        let toc_url = next_chapters_url.clone().unwrap_or_else(|| {
+            next_book_url.clone().unwrap_or_else(|| {
+                format!("{}/book/test", source.url.trim_end_matches('/'))
+            })
+        });
+        let t = std::time::Instant::now();
+        match parser.get_chapters(source, &toc_url).await {
+            Ok(chs) if !chs.is_empty() => {
+                next_chapter_url = Some(chs[0].url.clone());
+                stages_out.push(LiveTestStage {
+                    stage: "toc".into(),
+                    ok: true,
+                    latency_ms: t.elapsed().as_millis() as i64,
+                    sample: Some(format!(
+                        "第一章: {} (共 {} 章)",
+                        chs[0].title,
+                        chs.len()
+                    )),
+                    error: None,
+                });
+            }
+            Ok(_) => stages_out.push(LiveTestStage {
+                stage: "toc".into(),
+                ok: false,
+                latency_ms: t.elapsed().as_millis() as i64,
+                sample: None,
+                error: Some("章节列表为空".into()),
+            }),
+            Err(e) => stages_out.push(LiveTestStage {
+                stage: "toc".into(),
+                ok: false,
+                latency_ms: t.elapsed().as_millis() as i64,
+                sample: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    // Stage 4: content
+    if stages_filter.contains("content") {
+        let chapter_url = next_chapter_url.unwrap_or_else(|| {
+            next_chapters_url.clone().unwrap_or_else(|| {
+                format!("{}/book/test", source.url.trim_end_matches('/'))
+            })
+        });
+        let t = std::time::Instant::now();
+        match parser.get_chapter_content(source, &chapter_url).await {
+            Ok(content) => {
+                let preview = content.content.chars().take(200).collect::<String>();
+                stages_out.push(LiveTestStage {
+                    stage: "content".into(),
+                    ok: true,
+                    latency_ms: t.elapsed().as_millis() as i64,
+                    sample: Some(preview),
+                    error: None,
+                });
+            }
+            Err(e) => stages_out.push(LiveTestStage {
+                stage: "content".into(),
+                ok: false,
+                latency_ms: t.elapsed().as_millis() as i64,
+                sample: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    LiveTestReport {
+        stages: stages_out,
+        static_issues,
+    }
+}
+
+/// 批量实跑 live test。
+///
+/// - 并发受 `config.concurrency` 控制（`tokio::sync::Semaphore`）
+/// - 每个源用 `tokio::time::timeout` 包，超时则该源所有 stage 标记失败
+/// - 每跑完一个源调用 `report_progress(SourceCheckProgress)`
+/// - 最后一个源的 `is_done = true`
+///
+/// `report_progress` 是 closure 而非 `StreamSink`，便于单测不依赖 FRB 类型。
+/// bridge 层在 callback 内完成 DB 写回 + `sink.add(progress_json)`。
+pub async fn batch_run_live_test(
+    sources: Vec<BookSource>,
+    config: &CheckConfig,
+    report_progress: std::sync::Arc<dyn Fn(SourceCheckProgress) + Send + Sync + 'static>,
+) {
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+
+    let semaphore = Arc::new(Semaphore::new(config.concurrency));
+    let parser = Arc::new(BookSourceParser::new());
+    let total = sources.len();
+    let mut handles = Vec::with_capacity(total);
+    // Clone timeout_secs into local so spawned future doesn't borrow config
+    let timeout_secs = config.timeout_secs;
+
+    for (i, source) in sources.into_iter().enumerate() {
+        let permit = semaphore.clone().acquire_owned().await.unwrap();
+        let parser = parser.clone();
+        let keyword = config.keyword.clone();
+        let stages_filter = config.stages.clone();
+        let timeout = std::time::Duration::from_secs(timeout_secs);
+        let is_last = i == total - 1;
+        let source_id = source.id.clone();
+        let source_name = source.name.clone();
+        let progress_fn = report_progress.clone();
+
+        handles.push(tokio::spawn(async move {
+            let _permit = permit; // RAII — drop after this source finishes
+
+            let start = std::time::Instant::now();
+
+            let result = tokio::time::timeout(timeout, async {
+                run_live_test_filtered(&source, &keyword, &stages_filter, &parser).await
+            })
+            .await;
+
+            let stages = match result {
+                Ok(report) => report.stages,
+                Err(_elapsed) => stages_filter
+                    .iter()
+                    .map(|stage| LiveTestStage {
+                        stage: stage.clone(),
+                        ok: false,
+                        latency_ms: (timeout_secs * 1000) as i64,
+                        sample: None,
+                        error: Some(format!("超时 ({}s)", timeout_secs)),
+                    })
+                    .collect(),
+            };
+
+            let total_latency_ms = start.elapsed().as_millis() as i64;
+            let error = if stages.iter().all(|s| s.ok) {
+                None
+            } else {
+                stages
+                    .iter()
+                    .find(|s| !s.ok)
+                    .and_then(|s| s.error.clone())
+            };
+
+            progress_fn(SourceCheckProgress {
+                source_id,
+                source_name,
+                stages,
+                total_latency_ms,
+                error,
+                is_done: is_last,
+            });
+        }));
+    }
+
+    for handle in handles {
+        let _ = handle.await;
     }
 }
 

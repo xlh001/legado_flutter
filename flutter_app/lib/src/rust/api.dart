@@ -935,3 +935,22 @@ Future<String> validateSourceLive(
         required String keyword}) =>
     RustLib.instance.api.crateApiValidateSourceLive(
         dbPath: dbPath, sourceId: sourceId, keyword: keyword);
+
+// ============================================================
+// 批量书源校验 (批次 check-sources / PR2, funcId 119)
+// ============================================================
+
+/// 批量校验多个书源。`sourceIds` 是 String 列表的 JSON 字符串（如 `["id1","id2"]`），
+/// `configJson` 是 [`CheckConfig`] 的 JSON 字符串。返回 JSON 数组
+/// `Vec<SourceCheckProgress>`，最后一个元素 `is_done = true`。
+///
+/// 每个源跑完会同时写回 book_sources 表的 respond_time / last_check_error /
+/// last_check_at 字段。并发数 / 超时 / stage 过滤由 config_json 控制。
+Future<String> batchCheckSources(
+        {required String dbPath,
+        required String sourceIdsJson,
+        required String configJson}) =>
+    RustLib.instance.api.crateApiBatchCheckSources(
+        dbPath: dbPath,
+        sourceIdsJson: sourceIdsJson,
+        configJson: configJson);

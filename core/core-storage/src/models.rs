@@ -52,6 +52,14 @@ pub struct BookSource {
     #[serde(default)]
     pub explore_screen: Option<i32>,
 
+    // 批次 check-sources (v13 / 05-24): 校验结果持久化
+    #[serde(default)]
+    pub respond_time: i64,
+    #[serde(default)]
+    pub last_check_error: Option<String>,
+    #[serde(default)]
+    pub last_check_at: i64,
+
     pub created_at: i64,
     pub updated_at: i64,
 }

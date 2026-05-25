@@ -541,8 +541,11 @@ fn select_all_sources(conn: &Connection) -> Result<Vec<BookSource>, String> {
                 concurrent_rate: row.get(24)?,
                 variable_comment: row.get(25)?,
                 explore_screen: row.get(26)?,
-                created_at: row.get(27)?,
-                updated_at: row.get(28)?,
+                respond_time: row.get(27)?,
+                last_check_error: row.get(28)?,
+                last_check_at: row.get(29)?,
+                created_at: row.get(30)?,
+                updated_at: row.get(31)?,
             })
         })
         .map_err(|e| format!("查 sources 失败: {}", e))?;
@@ -573,8 +576,10 @@ fn upsert_source(tx: &rusqlite::Transaction, s: &BookSource) -> Result<String, S
             rule_search, rule_book_info, rule_toc, rule_content,
             login_url, login_ui, login_check_js, header, js_lib, cover_decode_js, book_url_pattern,
             rule_explore, explore_url, enabled_explore, last_update_time, book_source_comment,
-            concurrent_rate, variable_comment, explore_screen, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            concurrent_rate, variable_comment, explore_screen,
+            respond_time, last_check_error, last_check_at,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             url = excluded.url,
@@ -602,6 +607,9 @@ fn upsert_source(tx: &rusqlite::Transaction, s: &BookSource) -> Result<String, S
             concurrent_rate = excluded.concurrent_rate,
             variable_comment = excluded.variable_comment,
             explore_screen = excluded.explore_screen,
+            respond_time = excluded.respond_time,
+            last_check_error = excluded.last_check_error,
+            last_check_at = excluded.last_check_at,
             updated_at = excluded.updated_at",
         params![
             effective_id,
@@ -631,6 +639,9 @@ fn upsert_source(tx: &rusqlite::Transaction, s: &BookSource) -> Result<String, S
             s.concurrent_rate,
             s.variable_comment,
             s.explore_screen,
+            s.respond_time,
+            s.last_check_error,
+            s.last_check_at,
             s.created_at,
             s.updated_at,
         ],

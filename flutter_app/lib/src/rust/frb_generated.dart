@@ -521,6 +521,13 @@ abstract class RustLibApi extends BaseApi {
   /// 返回 `null` = 找不到 / 没启用书源；非 null = 匹配书源 JSON 字符串。
   Future<String?> crateApiFindBookSourceForUrl(
       {required String dbPath, required String bookUrl});
+
+  /// 批次 check-sources (funcId 119): 批量校验多个书源。返回 JSON 数组
+  /// Vec<SourceCheckProgress>，末尾元素 is_done=true。
+  Future<String> crateApiBatchCheckSources(
+      {required String dbPath,
+      required String sourceIdsJson,
+      required String configJson});
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -3790,6 +3797,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "find_book_source_for_url",
         argNames: ["dbPath", "bookUrl"],
+      );
+
+  @override
+  Future<String> crateApiBatchCheckSources(
+      {required String dbPath,
+      required String sourceIdsJson,
+      required String configJson}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(dbPath, serializer);
+        sse_encode_String(sourceIdsJson, serializer);
+        sse_encode_String(configJson, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 119, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiBatchCheckSourcesConstMeta,
+      argValues: [dbPath, sourceIdsJson, configJson],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiBatchCheckSourcesConstMeta =>
+      const TaskConstMeta(
+        debugName: "batch_check_sources",
+        argNames: ["dbPath", "sourceIdsJson", "configJson"],
       );
 
   @protected
