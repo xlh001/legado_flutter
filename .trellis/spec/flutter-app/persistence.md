@@ -39,6 +39,12 @@ Storage: `<documentsDir>/<fileName>`. The fileName must be a relative path with 
 
 When introducing new persistence call sites, **always** go through these helpers. Do **not** call `path_provider` or `File.readAsString` directly. The audit `findings-flutter-features.md::F-W2B-022` (resolved by BATCH-18e) collapsed 6 ad-hoc sites onto `resolvePersistenceDir()` for exactly this reason.
 
+**Exception: Diagnostic log files** — operational troubleshooting data stored under `<resolvePersistenceDir()>/logs/` as append-only JSONL (active file `app.log.jsonl`, rotated `app.N.log.jsonl`). These are NOT feature settings and do NOT go through `json_store.dart`:
+- They use direct `dart:io` file writes (append mode, async queued, rotation before write).
+- They share `resolvePersistenceDir()` for path consistency but bypass the `_Mutex` because they are a single-writer append-only stream, not read-modify-write JSON.
+- Tests bypass `path_provider` by passing a `tempDir` directly to the writer/logger `init()`.
+- Diagnostic log files are excluded from normal backup zip files.
+
 ## Test Hooks
 
 Helpers accept an optional `Directory? directory:` parameter. Tests pass a `tempDir` directly to bypass `path_provider` entirely:

@@ -50,6 +50,7 @@ The pattern of plumbing test overrides through page constructors keeps the produ
 | New cross-feature dialog | `core/widgets/` (and reuse — do not copy widgets) |
 | New time/format/parse helper used in 2+ features | `core/util/` with a unit test |
 | New settings key persisted to `settings.json` | New wrapper in `core/providers.dart`, backed by `core/persistence/json_store.dart` |
+| New cross-feature infrastructure (diagnostics, local logging) | `core/diagnostics/` — append-only operational data; must NOT block app flows; share `resolvePersistenceDir()` for path consistency |
 | New FRB call | Add `pub fn` in `core/bridge/src/api.rs`, regenerate, then call from feature via `rust_api.fooBar(...)` |
 
 ## Anti-Patterns Rejected by History

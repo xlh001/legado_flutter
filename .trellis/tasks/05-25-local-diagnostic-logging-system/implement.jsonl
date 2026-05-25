@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/05-25-local-diagnostic-logging-system/prd.md", "reason": "Implementation Task 1 scope, logging design, acceptance criteria, privacy and retention decisions"}
+{"file": ".trellis/tasks/05-25-local-diagnostic-logging-system/research/local-diagnostic-logging-patterns.md", "reason": "Research on Flutter local logging, global error capture, rotation, redaction, and FRB constraints"}
+{"file": ".trellis/tasks/05-25-local-diagnostic-logging-system/research/repo-logging-surfaces.md", "reason": "Repo-specific startup, debugPrint, persistence, settings, and testing surfaces"}
+{"file": ".trellis/spec/flutter-app/index.md", "reason": "Flutter app structure and core/features layout"}
+{"file": ".trellis/spec/flutter-app/directory-structure.md", "reason": "Where to place core diagnostics modules and import boundaries"}
+{"file": ".trellis/spec/flutter-app/persistence.md", "reason": "resolvePersistenceDir and local persistence conventions"}
+{"file": ".trellis/spec/flutter-app/state-and-providers.md", "reason": "Settings provider conventions and service/provider patterns"}
+{"file": ".trellis/spec/flutter-app/async-and-mounted.md", "reason": "Async startup/error handling style and mounted safety for future UI interactions"}
+{"file": ".trellis/spec/flutter-app/testing.md", "reason": "Flutter test hooks, temp directory patterns, and widget/unit test style"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "Forbidden production logging patterns and sensitive data constraints"}
+{"file": ".trellis/spec/cross-language/frb-bridge.md", "reason": "Generated FRB files must not be edited and errors surface as Dart exceptions"}
+{"file": ".trellis/spec/rust-core/logging.md", "reason": "Rust tracing constraints and sensitive-value logging bans for boundary decisions"}

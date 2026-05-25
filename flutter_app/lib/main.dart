@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/color_scheme_config.dart';
+import 'core/diagnostics/diagnostic_log.dart';
 import 'core/download_runner.dart';
 import 'core/notification_service.dart';
 import 'core/providers.dart';
@@ -15,6 +18,27 @@ import 'src/rust/frb_generated.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  final diagnosticLoggingEnabled = await loadDiagnosticLoggingEnabledFromDisk();
+  final diagnosticLogLevel = await loadDiagnosticLogLevelFromDisk();
+  await DiagnosticLog.init(
+    enabled: diagnosticLoggingEnabled,
+    minLevel: diagnosticLogLevel,
+  );
+
+  await runZonedGuarded<Future<void>>(
+    _runAppStartup,
+    (error, stack) {
+      DiagnosticLog.error(
+        'flutter.zone_error',
+        'Uncaught async error',
+        error: error,
+        stack: stack,
+      );
+    },
+  );
+}
+
+Future<void> _runAppStartup() async {
   // Apply preferred display mode as early as possible so animations like
   // simulation page-flip can leverage the high refresh rate from first frame.
   // Failure here must not block app startup.
@@ -25,12 +49,31 @@ Future<void> main() async {
     await RustLib.init();
     final pong = await rust_api.ping();
     debugPrint('[FRB smoke] ping() returned: $pong');
+    DiagnosticLog.info(
+      'frb.smoke',
+      'FRB smoke ping succeeded',
+      metadata: {'response': pong},
+      source: 'frb',
+    );
     if (pong != 'pong') {
       debugPrint('[FRB smoke] WARNING: unexpected ping response: $pong');
+      DiagnosticLog.warn(
+        'frb.smoke',
+        'FRB smoke ping returned unexpected response',
+        metadata: {'response': pong},
+        source: 'frb',
+      );
     }
   } catch (e, st) {
     debugPrint('[FRB smoke] init/ping FAILED: $e');
     debugPrint('[FRB smoke] stack: $st');
+    DiagnosticLog.error(
+      'frb.smoke',
+      'FRB smoke init/ping failed',
+      error: e,
+      stack: st,
+      source: 'frb',
+    );
     // Show a visible error page instead of crashing the process. Common
     // causes: missing libbridge.so, write-protected db dir, ABI mismatch.
     runApp(_FrbInitErrorApp(error: e, stack: st));
@@ -62,8 +105,7 @@ Future<void> main() async {
   // BATCH-27c-2 (05-22): 启动加载 selectedRemoteServerId，让
   // RemoteBooksPage 第一帧就走选中 server 凭据路径，避免先渲染 -1
   // fallback 再 listen 切换造成的请求浪费。
-  final selectedRemoteServerId =
-      await loadSelectedRemoteServerIdFromDisk();
+  final selectedRemoteServerId = await loadSelectedRemoteServerIdFromDisk();
   runApp(ProviderScope(
     overrides: [
       themeModeProvider.overrideWith((ref) => themeMode),
@@ -112,6 +154,12 @@ class LegadoApp extends ConsumerWidget {
       state.whenOrNull(
         data: (ok) {
           debugPrint('[FRB] DB init: $ok');
+          DiagnosticLog.info(
+            'db.init',
+            'Database initialization completed',
+            metadata: {'ok': ok},
+            source: 'frb',
+          );
           if (ok) {
             final dbPath = ref.read(dbPathProvider).valueOrNull;
             if (dbPath != null) {
@@ -119,7 +167,16 @@ class LegadoApp extends ConsumerWidget {
             }
           }
         },
-        error: (e, _) => debugPrint('[FRB] DB init error: $e'),
+        error: (e, st) {
+          debugPrint('[FRB] DB init error: $e');
+          DiagnosticLog.error(
+            'db.init',
+            'Database initialization failed',
+            error: e,
+            stack: st,
+            source: 'frb',
+          );
+        },
       );
     });
 

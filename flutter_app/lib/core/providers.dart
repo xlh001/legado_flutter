@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'diagnostics/diagnostic_log.dart';
+import 'diagnostics/diagnostic_log_level.dart';
 import 'persistence/json_store.dart';
 import 'theme.dart';
 import 'refresh_rate_controller.dart';
@@ -45,6 +47,12 @@ final dbInitializedProvider = FutureProvider<bool>((ref) async {
     debugPrint('[FRB] initLegado: $result');
     final version = await rust_api.getDbVersion(dbPath: dbPath);
     debugPrint('[FRB] DB version: $version');
+    DiagnosticLog.info(
+      'db.version',
+      'Database schema version loaded',
+      metadata: {'schema_version': version},
+      source: 'frb',
+    );
     return true;
   } catch (e) {
     debugPrint('[FRB] initLegado failed: $e');
@@ -52,7 +60,8 @@ final dbInitializedProvider = FutureProvider<bool>((ref) async {
   }
 });
 
-final allBooksProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allBooksProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   await ref.watch(dbInitializedProvider.future);
   final dbPath = await ref.watch(dbPathProvider.future);
   // 批次 8 (05-19): 透传 bookshelfSort 给 Rust 端，让 ORDER BY 生效。
@@ -107,7 +116,8 @@ final booksByGroupProvider = FutureProvider.family
   return list.cast<Map<String, dynamic>>();
 });
 
-final allSourcesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allSourcesProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   await ref.watch(dbInitializedProvider.future);
   final dbPath = await ref.watch(dbPathProvider.future);
   final json = await rust_api.getAllSources(dbPath: dbPath);
@@ -115,7 +125,8 @@ final allSourcesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) asyn
   return list.cast<Map<String, dynamic>>();
 });
 
-final allReplaceRulesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allReplaceRulesProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   await ref.watch(dbInitializedProvider.future);
   final dbPath = await ref.watch(dbPathProvider.future);
   final json = await rust_api.getReplaceRules(dbPath: dbPath);
@@ -163,7 +174,8 @@ final downloadDirProvider = FutureProvider<String>((ref) async {
   return '$dbDir/downloads';
 });
 
-final downloadTasksProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final downloadTasksProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   await ref.watch(dbInitializedProvider.future);
   final dbPath = await ref.watch(dbPathProvider.future);
   final json = await rust_api.getDownloadTasks(dbPath: dbPath);
@@ -172,18 +184,23 @@ final downloadTasksProvider = FutureProvider<List<Map<String, dynamic>>>((ref) a
 });
 
 final downloadChaptersProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, taskId) async {
+    FutureProvider.family<List<Map<String, dynamic>>, String>(
+        (ref, taskId) async {
   await ref.watch(dbInitializedProvider.future);
   final dbPath = await ref.watch(dbPathProvider.future);
-  final json = await rust_api.getDownloadChapters(dbPath: dbPath, taskId: taskId);
+  final json =
+      await rust_api.getDownloadChapters(dbPath: dbPath, taskId: taskId);
   final List<dynamic> list = jsonDecode(json);
   return list.cast<Map<String, dynamic>>();
 });
 
-final searchResultsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, keyword) async {
+final searchResultsProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>(
+        (ref, keyword) async {
   await ref.watch(dbInitializedProvider.future);
   final dbPath = await ref.watch(dbPathProvider.future);
-  final json = await rust_api.searchBooksOffline(dbPath: dbPath, keyword: keyword);
+  final json =
+      await rust_api.searchBooksOffline(dbPath: dbPath, keyword: keyword);
   final List<dynamic> list = jsonDecode(json);
   return list.cast<Map<String, dynamic>>();
 });
@@ -214,8 +231,9 @@ final bookChaptersProvider =
   final List<dynamic> list = jsonDecode(json);
   final result = list.cast<Map<String, dynamic>>();
   // 统计有 content 的章节数
-  final withContent =
-      result.where((m) => (m['content'] as String?)?.isNotEmpty ?? false).length;
+  final withContent = result
+      .where((m) => (m['content'] as String?)?.isNotEmpty ?? false)
+      .length;
   debugPrint(
       '[providers.timing] bookChaptersProvider DONE chapters=${result.length} withContent=$withContent TOTAL=${stopwatch.elapsedMilliseconds}ms');
   return result;
@@ -245,8 +263,7 @@ Future<void> saveThemeModeToDisk(ThemeMode mode, {String? directory}) =>
 Future<void> savePendingRoute(String route, {String? directory}) =>
     writeJsonKey('pendingRoute', route, directory: directory);
 
-Future<String?> loadPendingRoute({String? directory}) =>
-    readJsonKey<String?>(
+Future<String?> loadPendingRoute({String? directory}) => readJsonKey<String?>(
       'pendingRoute',
       (raw) => raw as String?,
       null,
@@ -284,6 +301,43 @@ Future<bool> loadSearchPrecisionFromDisk() => readJsonKey<bool>(
 
 Future<void> saveSearchPrecisionToDisk(bool enabled) =>
     writeJsonKey('searchPrecision', enabled, errorTag: 'search precision');
+
+Future<bool> loadDiagnosticLoggingEnabledFromDisk({String? directory}) =>
+    readJsonKey<bool>(
+      'diagnosticLoggingEnabled',
+      (raw) => raw is bool ? raw : true,
+      true,
+      directory: directory,
+    );
+
+Future<void> saveDiagnosticLoggingEnabledToDisk(bool enabled,
+        {String? directory}) =>
+    writeJsonKey(
+      'diagnosticLoggingEnabled',
+      enabled,
+      directory: directory,
+      errorTag: 'diagnostic logging enabled',
+    );
+
+Future<DiagnosticLogLevel> loadDiagnosticLogLevelFromDisk(
+        {String? directory}) =>
+    readJsonKey<DiagnosticLogLevel>(
+      'diagnosticLogLevel',
+      (raw) => raw is String
+          ? DiagnosticLogLevel.fromKey(raw)
+          : DiagnosticLogLevel.debug,
+      DiagnosticLogLevel.debug,
+      directory: directory,
+    );
+
+Future<void> saveDiagnosticLogLevelToDisk(DiagnosticLogLevel level,
+        {String? directory}) =>
+    writeJsonKey(
+      'diagnosticLogLevel',
+      level.key,
+      directory: directory,
+      errorTag: 'diagnostic log level',
+    );
 
 /// BATCH-26c (05-22): 底栏「发现」tab 显隐 toggle。对齐原 legado
 /// `pref_config_other.xml` `showDiscovery` SwitchPreference + `MainActivity.kt:364-371`
@@ -459,8 +513,7 @@ void applyDefaultHomePage(
 ///
 /// 持久化用 bool key `bookshelfManageOpenReader`，对齐 BATCH-26d
 /// `defaultHomePage` 同款 readJsonKey/writeJsonKey 范本。
-final bookshelfManageOpenReaderProvider =
-    StateProvider<bool>((ref) => false);
+final bookshelfManageOpenReaderProvider = StateProvider<bool>((ref) => false);
 
 Future<bool> loadBookshelfManageOpenReaderFromDisk({String? directory}) =>
     readJsonKey<bool>(
@@ -470,8 +523,7 @@ Future<bool> loadBookshelfManageOpenReaderFromDisk({String? directory}) =>
       directory: directory,
     );
 
-Future<void> saveBookshelfManageOpenReaderToDisk(bool v,
-        {String? directory}) =>
+Future<void> saveBookshelfManageOpenReaderToDisk(bool v, {String? directory}) =>
     writeJsonKey(
       'bookshelfManageOpenReader',
       v,
@@ -810,7 +862,8 @@ class ReaderSettings {
     Color(0xFF000000),
   ];
 
-  int get effectiveBackgroundColor => nightMode ? nightBackgroundColor : backgroundColor;
+  int get effectiveBackgroundColor =>
+      nightMode ? nightBackgroundColor : backgroundColor;
   int get effectiveTextColor => nightMode ? nightTextColor : textColor;
 
   /// 阅读器当前的渲染模式。
@@ -1067,7 +1120,8 @@ class ReaderSettings {
       letterSpacing: (json['letterSpacing'] as num?)?.toDouble() ?? 0.1,
       lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? 1.8,
       paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 8.0,
-      horizontalPadding: (json['horizontalPadding'] as num?)?.toDouble() ?? 16.0,
+      horizontalPadding:
+          (json['horizontalPadding'] as num?)?.toDouble() ?? 16.0,
       verticalPadding: (json['verticalPadding'] as num?)?.toDouble() ?? 16.0,
       paragraphIndent: json['paragraphIndent'] as String? ?? '\u3000\u3000',
       pageAnim: pageAnim,
@@ -1082,8 +1136,7 @@ class ReaderSettings {
       // v5 新字段；v ≤ 4 旧 JSON 缺省 fallback 到 300ms（与默认值一致）。
       pageAnimDurationMs: (json['pageAnimDurationMs'] as int?) ?? 300,
       // v6 新字段；v ≤ 5 旧 JSON 缺省时 fallback 到默认值（-1.0 = 跟随系统 / true）。
-      screenBrightness:
-          (json['screenBrightness'] as num?)?.toDouble() ?? -1.0,
+      screenBrightness: (json['screenBrightness'] as num?)?.toDouble() ?? -1.0,
       keepScreenOn: json['keepScreenOn'] as bool? ?? true,
       // 批次 2 (05-18): 音量键翻页开关。仍保 schema=v6（与 batch01 同模式：
       // 走"缺字段 fallback 默认值"路径，不强升 settingsVersion）。
@@ -1124,7 +1177,8 @@ List<int> _parseTapZones(dynamic raw) {
   });
 }
 
-final readerSettingsProvider = StateProvider<ReaderSettings>((ref) => const ReaderSettings());
+final readerSettingsProvider =
+    StateProvider<ReaderSettings>((ref) => const ReaderSettings());
 
 /// 字号派生自 readerSettings — 单一 source of truth（F-W2A-008，BATCH-18d）。
 ///
@@ -1137,7 +1191,8 @@ final fontSizeProvider = Provider<double>(
   (ref) => ref.watch(readerSettingsProvider).fontSize,
 );
 
-Future<ReaderSettings> loadReaderSettingsFromDisk() => readJsonKey<ReaderSettings>(
+Future<ReaderSettings> loadReaderSettingsFromDisk() =>
+    readJsonKey<ReaderSettings>(
       'readerSettings',
       (raw) => raw is Map<String, dynamic>
           ? ReaderSettings.fromJson(raw)
@@ -1145,8 +1200,7 @@ Future<ReaderSettings> loadReaderSettingsFromDisk() => readJsonKey<ReaderSetting
       const ReaderSettings(),
     );
 
-Future<void> saveReaderSettingsToDisk(ReaderSettings settings) =>
-    writeJsonKey(
+Future<void> saveReaderSettingsToDisk(ReaderSettings settings) => writeJsonKey(
       'readerSettings',
       settings.toJson(),
       errorTag: 'reader settings',
@@ -1158,8 +1212,7 @@ Future<bool> loadBookshelfGridViewFromDisk() => readJsonKey<bool>(
       false,
     );
 
-Future<void> saveBookshelfGridViewToDisk(bool isGridView) =>
-    writeJsonKey(
+Future<void> saveBookshelfGridViewToDisk(bool isGridView) => writeJsonKey(
       'bookshelfGridView',
       isGridView,
       errorTag: 'bookshelf grid view',

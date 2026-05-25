@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/05-25-local-diagnostic-logging-system/prd.md", "reason": "Acceptance criteria for Implementation Task 1"}
+{"file": ".trellis/tasks/05-25-local-diagnostic-logging-system/research/local-diagnostic-logging-patterns.md", "reason": "Expected logging behavior, rotation, error capture, and privacy constraints"}
+{"file": ".trellis/tasks/05-25-local-diagnostic-logging-system/research/repo-logging-surfaces.md", "reason": "Repo-specific surfaces that should or should not be touched in Task 1"}
+{"file": ".trellis/spec/flutter-app/persistence.md", "reason": "Verify app-local path and file persistence conventions"}
+{"file": ".trellis/spec/flutter-app/state-and-providers.md", "reason": "Verify settings/provider additions follow project conventions"}
+{"file": ".trellis/spec/flutter-app/testing.md", "reason": "Verify tests use accepted temp dir/provider patterns"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "Verify no sensitive data logging or forbidden debug patterns"}
+{"file": ".trellis/spec/cross-language/frb-bridge.md", "reason": "Verify generated FRB files are untouched"}
