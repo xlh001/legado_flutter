@@ -1,0 +1,10 @@
+{"file":".trellis/spec/rust-core/storage-and-database.md","reason":"SQLite schema, DAO, migration, and transaction conventions for removing the source FK safely."}
+{"file":".trellis/spec/rust-core/testing.md","reason":"Core-storage regression and migration test conventions."}
+{"file":".trellis/spec/rust-core/error-handling.md","reason":"Bridge/DAO error context conventions if delete or reader paths need adjusted messages."}
+{"file":".trellis/spec/rust-core/quality-and-anti-patterns.md","reason":"Rust workspace quality constraints and forbidden database patterns."}
+{"file":".trellis/spec/cross-language/frb-bridge.md","reason":"Ensures implementation avoids unnecessary FRB signature/generated binding changes."}
+{"file":".trellis/spec/cross-language/data-flow.md","reason":"Cross-layer read/write/invalidation audit for source delete and reader recovery behavior."}
+{"file":".trellis/spec/flutter-app/state-and-providers.md","reason":"Provider invalidation and reader/source UI state expectations if Flutter code is touched."}
+{"file":".trellis/spec/flutter-app/async-and-mounted.md","reason":"Mounted-check rules if reader/source UI async paths are touched."}
+{"file":".trellis/tasks/05-25-fix-delete-source-foreign-key/research/source-delete-book-cache.md","reason":"Task-specific research on existing source delete, book cache, and source switching behavior."}
+{"file":".trellis/tasks/05-25-fix-delete-source-foreign-key/research/original-legado-source-delete.md","reason":"Original Legado behavior: books keep plain origin metadata and source deletion does not delete bookshelf books."}

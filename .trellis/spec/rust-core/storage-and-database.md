@@ -5,7 +5,7 @@ Conventions for SQLite access in `core-storage` and the cross-DAO transaction he
 ## Database Lifecycle
 
 - Every DB call starts from `core_storage::database::get_connection(db_path)` which opens a fresh `Connection`. There is **no shared pool**.
-- `core_storage::database::init_database(db_path)` creates tables if missing and runs migrations up to the constant `DB_VERSION` (currently 12). Migrations are stored as plain SQL inside `database.rs` and are tracked through `PRAGMA user_version`.
+- `core_storage::database::init_database(db_path)` creates tables if missing and runs migrations up to the constant `DB_VERSION` (currently 14). Migrations are stored as plain SQL inside `database.rs` and are tracked through `PRAGMA user_version`.
 - WAL is enabled at every `init_database` call via `pragma_update_and_check(None, "journal_mode", "WAL", ...)` and verified by 2 dedicated DB-level tests (BATCH-08c). Treat WAL as production behaviour — backup_dao goes through SQL `SELECT` so WAL sidecars are transparent (see [backup-aes guide](../guides/backup-aes-thinking-guide.md) and `findings-rust-data.md::F-W1A-056`).
 
 When you write new SQL elsewhere, never call `Connection::open` directly. Always go through `database::get_connection` so PRAGMAs (foreign keys, WAL, busy timeout) stay consistent.
@@ -75,9 +75,65 @@ Do not re-implement these conversions inside DAOs. If a new mapping is needed, a
 - Migrations are sequential `if old < N { run sql; old = N; }`. Add new ones in `apply_migrations` (search for existing `match user_version` blocks).
 - Add a `database::tests::test_migration_from_vN_to_vN+1` covering the new step. The existing `test_migration_from_v1_to_v2` is the canonical template.
 
+## Scenario: Books Keep Soft Source References
+
+### 1. Scope / Trigger
+
+- Trigger: code that creates, migrates, deletes, imports, or exports bookshelf books and book sources.
+- Bookshelf books own their saved metadata, chapters, progress, bookmarks, and cached chapter content. Book sources are replaceable parser definitions.
+- This follows original Legado's model where `Book.origin` / `originName` are plain stored fields and deleting a `BookSource` does not delete books.
+
+### 2. Signatures
+
+- Fresh schema: `books.source_id TEXT NOT NULL` is a soft metadata column, not a `FOREIGN KEY` to `book_sources(id)`.
+- Preserved hard FKs: `chapters.book_id`, `book_progress.book_id`, and `bookmarks.book_id` reference `books(id) ON DELETE CASCADE`.
+- Index contract: `idx_books_source_id ON books(source_id)` must still exist because source id remains queryable metadata.
+
+### 3. Contracts
+
+- `SourceDao::delete(id)` and `SourceDao::delete_batch(ids)` delete only `book_sources` rows.
+- Deleting a source must not delete or mutate rows in `books`, `chapters`, `book_progress`, or `bookmarks`.
+- A book may retain a `source_id` whose source row no longer exists. Online refresh/content paths may report missing source for uncached content until the user switches source.
+- Cached chapter content is read from `chapters.content` before any online fetch; cached content must remain usable after source deletion.
+
+### 4. Validation & Error Matrix
+
+- Delete source with referencing books -> success; books and owned child rows remain.
+- Save/import book with missing `source_id` -> success; this is allowed soft-reference state.
+- Delete book -> child rows still cascade through `books(id)` FKs.
+- Uncached online fetch with missing source -> bridge/reader returns a user-actionable missing-source error; caller should offer manual source switching.
+
+### 5. Good/Base/Bad Cases
+
+- Good: user deletes a source, opens an already cached chapter, and reads from stored content without network/source lookup.
+- Base: user deletes a source, then manually switches the book to another source before loading uncached chapters.
+- Bad: adding `ON DELETE CASCADE` from `books.source_id` to `book_sources(id)` or manually deleting `books` inside source deletion.
+
+### 6. Tests Required
+
+- Fresh DB test asserting `pragma_foreign_key_list('books')` has no `book_sources` reference.
+- Regression test deleting a source referenced by a book and asserting the book row remains.
+- Migration test from the last hard-FK schema version asserting row data is preserved, `idx_books_source_id` exists, and owned child FKs still cascade to `books`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```sql
+FOREIGN KEY (source_id) REFERENCES book_sources(id) ON DELETE CASCADE
+```
+
+#### Correct
+
+```sql
+source_id TEXT NOT NULL
+-- no FK to book_sources; this is remembered source metadata, not ownership
+```
+
 ## Common Mistakes
 
 - Opening `Connection::open` directly. Use `database::get_connection`.
 - Forgetting `upsert_in_tx`. Without it, callers cannot batch the DAO into a cross-DAO transaction.
 - SELECT/INSERT column lists copied across functions instead of using a single `*_COLUMNS` constant. This caused at least one regression captured in `findings-rust-data.md` (BATCH-08).
 - Writing migrations that read user data via `dao::*`. Migrations should run **only** on raw SQL because the DAOs assume the latest schema.
+- Treating book sources as owners of bookshelf books. Sources are parser definitions; book deletion owns/cascades book children, source deletion must not cascade to books.

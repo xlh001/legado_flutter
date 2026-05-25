@@ -1,0 +1,9 @@
+{"file":".trellis/spec/rust-core/storage-and-database.md","reason":"Review schema/migration/DAO changes against project database conventions."}
+{"file":".trellis/spec/rust-core/testing.md","reason":"Verify regression and migration tests follow core-storage test style."}
+{"file":".trellis/spec/rust-core/error-handling.md","reason":"Check user-facing bridge errors retain context."}
+{"file":".trellis/spec/rust-core/quality-and-anti-patterns.md","reason":"Check for forbidden database and Rust quality patterns."}
+{"file":".trellis/spec/cross-language/frb-bridge.md","reason":"Check no generated FRB artifacts/signatures drift unnecessarily."}
+{"file":".trellis/spec/cross-language/data-flow.md","reason":"Review source delete and reader recovery data flow end-to-end."}
+{"file":".trellis/spec/flutter-app/state-and-providers.md","reason":"Review provider invalidation if Flutter code changes."}
+{"file":".trellis/tasks/05-25-fix-delete-source-foreign-key/research/source-delete-book-cache.md","reason":"Validate final behavior against task research and user clarification."}
+{"file":".trellis/tasks/05-25-fix-delete-source-foreign-key/research/original-legado-source-delete.md","reason":"Validate final behavior against original Legado source/book deletion semantics."}

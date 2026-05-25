@@ -7,7 +7,7 @@ use rusqlite::{Connection, Result as SqlResult};
 use tracing::{debug, info, warn};
 
 /// 数据库版本（用于迁移，通过 PRAGMA user_version 持久化）
-const DB_VERSION: i32 = 13;
+const DB_VERSION: i32 = 14;
 
 /// 初始化数据库
 /// 创建所有必要的表，如果数据库已存在则检查是否需要迁移
@@ -189,8 +189,7 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
             dur_chapter_time INTEGER DEFAULT 0,
             group_id INTEGER DEFAULT 0,
             created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            FOREIGN KEY (source_id) REFERENCES book_sources(id)
+            updated_at INTEGER NOT NULL
         )",
         [],
     )?;
@@ -508,6 +507,16 @@ fn set_db_version(conn: &Connection, version: i32) -> SqlResult<()> {
 /// rollback）。
 fn migrate_database(conn: &mut Connection, from_version: i32, to_version: i32) -> SqlResult<()> {
     info!("数据库迁移: {} -> {}", from_version, to_version);
+
+    // v14 需要重建 books 以移除 books.source_id -> book_sources 的硬 FK。
+    // SQLite 不能在 foreign_keys=ON 且有子表引用 books 时安全 DROP/RENAME
+    // 父表；PRAGMA foreign_keys 又不能在事务中切换，所以跨 v14 迁移时先
+    // 临时关闭，提交后用 foreign_key_check 验证 owned child FKs 仍一致。
+    let temporarily_disable_foreign_keys = from_version < 14 && to_version >= 14;
+    if temporarily_disable_foreign_keys {
+        conn.execute("PRAGMA foreign_keys = OFF", [])?;
+    }
+
     let tx = conn.transaction()?;
     for v in (from_version + 1)..=to_version {
         debug!("执行版本 {} 迁移", v);
@@ -525,6 +534,7 @@ fn migrate_database(conn: &mut Connection, from_version: i32, to_version: i32) -
             11 => migrate_v11(&tx)?,
             12 => migrate_v12(&tx)?,
             13 => migrate_v13(&tx)?,
+            14 => migrate_v14(&tx)?,
             _ => {
                 return Err(rusqlite::Error::SqliteFailure(
                     rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
@@ -535,6 +545,23 @@ fn migrate_database(conn: &mut Connection, from_version: i32, to_version: i32) -
     }
     set_db_version(&tx, to_version)?;
     tx.commit()?;
+
+    if temporarily_disable_foreign_keys {
+        let violations: i64 =
+            conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })?;
+        if violations != 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY),
+                Some(format!(
+                    "v14 foreign_key_check failed: {violations} violations"
+                )),
+            ));
+        }
+        conn.execute("PRAGMA foreign_keys = ON", [])?;
+    }
+
     info!("数据库迁移完成");
     Ok(())
 }
@@ -783,11 +810,8 @@ fn migrate_v10(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
 
-    let migrated: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM replace_rules",
-        [],
-        |row| row.get(0),
-    )?;
+    let migrated: i64 =
+        conn.query_row("SELECT COUNT(*) FROM replace_rules", [], |row| row.get(0))?;
     conn.execute(
         "INSERT INTO replace_rules_new
             (id, name, pattern, replacement, enabled, scope,
@@ -800,10 +824,7 @@ fn migrate_v10(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
     conn.execute("DROP TABLE replace_rules", [])?;
-    conn.execute(
-        "ALTER TABLE replace_rules_new RENAME TO replace_rules",
-        [],
-    )?;
+    conn.execute("ALTER TABLE replace_rules_new RENAME TO replace_rules", [])?;
     info!("v10: 迁移 {} 条替换规则", migrated);
     Ok(())
 }
@@ -1016,6 +1037,106 @@ fn migrate_v13(conn: &Connection) -> SqlResult<()> {
     }
     info!("v13: 迁移完成（批次 check-sources）");
     Ok(())
+}
+
+/// 版本 14 迁移：books.source_id 改为软引用。
+///
+/// 书架书籍应拥有自己的元数据、章节、进度、书签和缓存正文；删除书源不应
+/// 因 books.source_id 的硬 FK 失败。这里重建 books 表，仅移除
+/// `FOREIGN KEY (source_id) REFERENCES book_sources(id)`，保留所有列值和
+/// books 的 owned child FKs（chapters/book_progress/bookmarks/... -> books）。
+fn migrate_v14(conn: &Connection) -> SqlResult<()> {
+    info!("v14: 重建 books，移除 source_id -> book_sources 外键");
+
+    if !table_exists(conn, "books")? {
+        debug!("v14: books 表不存在，跳过重建");
+        return Ok(());
+    }
+    if !books_has_source_fk(conn)? {
+        debug!("v14: books.source_id 已是软引用，确保索引存在后跳过");
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_books_source_id ON books(source_id)",
+            [],
+        )?;
+        return Ok(());
+    }
+
+    conn.execute(
+        "CREATE TABLE books_new (
+            id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            source_name TEXT,
+            name TEXT NOT NULL,
+            author TEXT,
+            cover_url TEXT,
+            chapter_count INTEGER DEFAULT 0,
+            latest_chapter_title TEXT,
+            intro TEXT,
+            kind TEXT,
+            book_url TEXT,
+            toc_url TEXT,
+            last_check_time INTEGER,
+            last_check_count INTEGER DEFAULT 0,
+            total_word_count INTEGER DEFAULT 0,
+            can_update INTEGER DEFAULT 1,
+            order_time INTEGER NOT NULL,
+            latest_chapter_time INTEGER,
+            custom_cover_path TEXT,
+            custom_info_json TEXT,
+            dur_chapter_index INTEGER DEFAULT 0,
+            dur_chapter_pos INTEGER DEFAULT 0,
+            dur_chapter_title TEXT,
+            dur_chapter_time INTEGER DEFAULT 0,
+            group_id INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "INSERT INTO books_new (
+            id, source_id, source_name, name, author, cover_url, chapter_count,
+            latest_chapter_title, intro, kind, book_url, toc_url, last_check_time,
+            last_check_count, total_word_count, can_update, order_time,
+            latest_chapter_time, custom_cover_path, custom_info_json,
+            dur_chapter_index, dur_chapter_pos, dur_chapter_title, dur_chapter_time,
+            group_id, created_at, updated_at
+        )
+        SELECT
+            id, source_id, source_name, name, author, cover_url, chapter_count,
+            latest_chapter_title, intro, kind, book_url, toc_url, last_check_time,
+            last_check_count, total_word_count, can_update, order_time,
+            latest_chapter_time, custom_cover_path, custom_info_json,
+            dur_chapter_index, dur_chapter_pos, dur_chapter_title, dur_chapter_time,
+            group_id, created_at, updated_at
+        FROM books",
+        [],
+    )?;
+
+    conn.execute("DROP TABLE books", [])?;
+    conn.execute("ALTER TABLE books_new RENAME TO books", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_books_source_id ON books(source_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_books_group_id ON books(group_id)",
+        [],
+    )?;
+
+    info!("v14: books 重建完成，source_id 保留为可查询软引用");
+    Ok(())
+}
+
+fn books_has_source_fk(conn: &Connection) -> SqlResult<bool> {
+    conn.query_row(
+        "SELECT COUNT(*) > 0
+           FROM pragma_foreign_key_list('books')
+          WHERE \"table\" = 'book_sources' AND \"from\" = 'source_id'",
+        [],
+        |row| row.get(0),
+    )
 }
 
 /// 批次 16 (v12) 4 张 RSS 表 — fresh install + migrate 共用。
@@ -1257,6 +1378,68 @@ mod tests {
             )
             .unwrap();
         assert!(has_book_url, "fresh database should include book_url");
+    }
+
+    #[test]
+    fn test_fresh_books_source_id_is_soft_reference() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir
+            .path()
+            .join("test_fresh_soft_source_id.db")
+            .to_string_lossy()
+            .to_string();
+        let mut conn = init_database(&db_path).unwrap();
+
+        assert!(
+            !books_has_source_fk(&conn).unwrap(),
+            "fresh books table must not FK source_id to book_sources"
+        );
+
+        let book = {
+            let book_dao = crate::book_dao::BookDao::new(&conn);
+            book_dao
+                .create(
+                    "missing-source",
+                    Some("Missing Source"),
+                    "Orphan Book",
+                    None,
+                )
+                .unwrap()
+        };
+        assert_eq!(book.source_id, "missing-source");
+
+        let source = {
+            let source_dao = crate::source_dao::SourceDao::new(&mut conn);
+            source_dao
+                .create("Delete Me", "https://delete.example")
+                .unwrap()
+        };
+        let source_book = {
+            let book_dao = crate::book_dao::BookDao::new(&conn);
+            book_dao
+                .create(&source.id, Some(&source.name), "Preserved Book", None)
+                .unwrap()
+        };
+
+        {
+            let source_dao = crate::source_dao::SourceDao::new(&mut conn);
+            source_dao.delete(&source.id).unwrap();
+        }
+        {
+            let book_dao = crate::book_dao::BookDao::new(&conn);
+            let preserved = book_dao.get_by_id(&source_book.id).unwrap().unwrap();
+            assert_eq!(preserved.source_id, source.id);
+            assert_eq!(preserved.name, "Preserved Book");
+        }
+
+        let idx_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='index' AND name='idx_books_source_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(idx_exists, "source_id remains indexed queryable metadata");
     }
 
     #[test]
@@ -1780,9 +1963,7 @@ mod tests {
         assert_eq!(m.unwrap().id, s2.id);
 
         // 不匹配任何 baseUrl 也不匹配任何 pattern → None
-        let none = dao
-            .find_for_book_url("https://nowhere.com/book/1")
-            .unwrap();
+        let none = dao.find_for_book_url("https://nowhere.com/book/1").unwrap();
         assert!(none.is_none());
     }
 
@@ -1961,6 +2142,177 @@ mod tests {
         conn.pragma_update(None, "user_version", 10_i32).unwrap();
     }
 
+    fn build_v13_schema_with_books_source_fk(db_path: &str) {
+        let conn = Connection::open(db_path).unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute(
+            "CREATE TABLE book_sources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                url TEXT NOT NULL UNIQUE,
+                source_type INTEGER DEFAULT 0,
+                group_name TEXT,
+                enabled INTEGER DEFAULT 1,
+                custom_order INTEGER DEFAULT 0,
+                weight INTEGER DEFAULT 0,
+                rule_search TEXT,
+                rule_book_info TEXT,
+                rule_toc TEXT,
+                rule_content TEXT,
+                login_url TEXT,
+                login_ui TEXT,
+                login_check_js TEXT,
+                header TEXT,
+                js_lib TEXT,
+                cover_decode_js TEXT,
+                book_url_pattern TEXT,
+                rule_explore TEXT,
+                explore_url TEXT,
+                enabled_explore INTEGER DEFAULT 1,
+                last_update_time INTEGER DEFAULT 0,
+                book_source_comment TEXT,
+                concurrent_rate TEXT,
+                variable_comment TEXT,
+                explore_screen INTEGER,
+                respond_time INTEGER DEFAULT 0,
+                last_check_error TEXT,
+                last_check_at INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE books (
+                id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                source_name TEXT,
+                name TEXT NOT NULL,
+                author TEXT,
+                cover_url TEXT,
+                chapter_count INTEGER DEFAULT 0,
+                latest_chapter_title TEXT,
+                intro TEXT,
+                kind TEXT,
+                book_url TEXT,
+                toc_url TEXT,
+                last_check_time INTEGER,
+                last_check_count INTEGER DEFAULT 0,
+                total_word_count INTEGER DEFAULT 0,
+                can_update INTEGER DEFAULT 1,
+                order_time INTEGER NOT NULL,
+                latest_chapter_time INTEGER,
+                custom_cover_path TEXT,
+                custom_info_json TEXT,
+                dur_chapter_index INTEGER DEFAULT 0,
+                dur_chapter_pos INTEGER DEFAULT 0,
+                dur_chapter_title TEXT,
+                dur_chapter_time INTEGER DEFAULT 0,
+                group_id INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (source_id) REFERENCES book_sources(id)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute("CREATE INDEX idx_books_source_id ON books(source_id)", [])
+            .unwrap();
+        conn.execute(
+            "CREATE TABLE chapters (
+                id TEXT PRIMARY KEY,
+                book_id TEXT NOT NULL,
+                index_num INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                url TEXT NOT NULL,
+                content TEXT,
+                is_volume INTEGER DEFAULT 0,
+                is_checked INTEGER DEFAULT 0,
+                start INTEGER DEFAULT 0,
+                end INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE book_progress (
+                book_id TEXT PRIMARY KEY,
+                chapter_index INTEGER DEFAULT 0,
+                paragraph_index INTEGER DEFAULT 0,
+                offset INTEGER DEFAULT 0,
+                read_time INTEGER DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE bookmarks (
+                id TEXT PRIMARY KEY,
+                book_id TEXT NOT NULL,
+                chapter_index INTEGER NOT NULL,
+                paragraph_index INTEGER DEFAULT 0,
+                content TEXT,
+                book_name TEXT,
+                book_author TEXT,
+                chapter_pos INTEGER DEFAULT 0,
+                chapter_name TEXT,
+                book_text TEXT,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO book_sources (id, name, url, created_at, updated_at)
+             VALUES ('src1', 'Old Source', 'https://old.example', 10, 11)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO books (
+                id, source_id, source_name, name, author, cover_url, chapter_count,
+                latest_chapter_title, intro, kind, book_url, toc_url, last_check_time,
+                last_check_count, total_word_count, can_update, order_time,
+                latest_chapter_time, custom_cover_path, custom_info_json,
+                dur_chapter_index, dur_chapter_pos, dur_chapter_title, dur_chapter_time,
+                group_id, created_at, updated_at
+             ) VALUES (
+                'book1', 'src1', 'Old Source', 'Old Book', 'Author', 'cover', 3,
+                'Latest', 'Intro', 'Kind', 'book-url', 'toc-url', 100,
+                2, 3000, 1, 200, 150, 'custom-cover', '{\"k\":1}',
+                1, 20, 'Reading', 250, 7, 12, 13
+             )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chapters (id, book_id, index_num, title, url, content, created_at, updated_at)
+             VALUES ('ch1', 'book1', 0, 'Chapter 1', 'https://old.example/ch1', 'cached body', 1, 2)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO book_progress (book_id, chapter_index, paragraph_index, offset, read_time, updated_at)
+             VALUES ('book1', 1, 2, 3, 4, 5)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO bookmarks (id, book_id, chapter_index, content, book_name, created_at)
+             VALUES ('bm1', 'book1', 0, 'mark', 'Old Book', 1)",
+            [],
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 13_i32).unwrap();
+    }
+
     /// v10 → v11 迁移：books 表加 5 列（dur_chapter_index/pos/title/time +
     /// group_id），旧数据保留，新列为默认值。
     #[test]
@@ -2044,6 +2396,121 @@ mod tests {
         assert!(dur_title.is_none());
         assert_eq!(dur_time, 0);
         assert_eq!(group_id, 0);
+    }
+
+    #[test]
+    fn test_migrate_v14_removes_books_source_fk_and_preserves_rows() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir
+            .path()
+            .join("test_migrate_v14_soft_source_id.db")
+            .to_string_lossy()
+            .to_string();
+
+        build_v13_schema_with_books_source_fk(&db_path);
+        {
+            let pre = Connection::open(&db_path).unwrap();
+            assert!(books_has_source_fk(&pre).unwrap());
+        }
+
+        let migrated = init_database(&db_path).unwrap();
+        assert_eq!(get_db_version(&migrated).unwrap(), DB_VERSION);
+        assert!(!books_has_source_fk(&migrated).unwrap());
+
+        let (source_id, source_name, name, author, chapter_count, book_url, toc_url, group_id): (
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+            i32,
+            Option<String>,
+            Option<String>,
+            i64,
+        ) = migrated
+            .query_row(
+                "SELECT source_id, source_name, name, author, chapter_count, book_url, toc_url, group_id
+                 FROM books WHERE id = 'book1'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(source_id, "src1");
+        assert_eq!(source_name.as_deref(), Some("Old Source"));
+        assert_eq!(name, "Old Book");
+        assert_eq!(author.as_deref(), Some("Author"));
+        assert_eq!(chapter_count, 3);
+        assert_eq!(book_url.as_deref(), Some("book-url"));
+        assert_eq!(toc_url.as_deref(), Some("toc-url"));
+        assert_eq!(group_id, 7);
+
+        let cached_content: String = migrated
+            .query_row("SELECT content FROM chapters WHERE id = 'ch1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(cached_content, "cached body");
+        let progress_count: i64 = migrated
+            .query_row(
+                "SELECT COUNT(*) FROM book_progress WHERE book_id = 'book1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(progress_count, 1);
+        let bookmark_count: i64 = migrated
+            .query_row(
+                "SELECT COUNT(*) FROM bookmarks WHERE book_id = 'book1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(bookmark_count, 1);
+
+        migrated
+            .execute("DELETE FROM book_sources WHERE id = 'src1'", [])
+            .unwrap();
+        let book_count: i64 = migrated
+            .query_row("SELECT COUNT(*) FROM books WHERE id = 'book1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(book_count, 1, "deleting source should preserve book row");
+
+        let idx_exists: bool = migrated
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='index' AND name='idx_books_source_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            idx_exists,
+            "v14 migration should recreate idx_books_source_id"
+        );
+
+        let chapter_fk_to_books: bool = migrated
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_foreign_key_list('chapters')
+                 WHERE \"table\" = 'books' AND \"from\" = 'book_id' AND on_delete = 'CASCADE'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            chapter_fk_to_books,
+            "owned child FK to books must remain intact"
+        );
     }
 
     /// v10 → v11 迁移：bookmarks 表加 5 列。
@@ -2481,7 +2948,9 @@ mod tests {
         )
         .unwrap();
         let records_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM rss_read_records", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM rss_read_records", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(records_count, 1);
     }
