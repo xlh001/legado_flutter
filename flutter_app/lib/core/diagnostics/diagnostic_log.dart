@@ -181,6 +181,12 @@ abstract final class DiagnosticLog {
     return dir == null ? null : DiagnosticLogReader(dir);
   }
 
+  static void setEnabled(bool enabled) {
+    final w = _writer;
+    if (w == null) return;
+    w.config = w.config.copyWith(enabled: enabled);
+  }
+
   static Future<void> flush() async => _writer?.flush();
 
   static Future<void> resetForTest() async {

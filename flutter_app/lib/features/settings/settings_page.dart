@@ -285,6 +285,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/replace-rules'),
           ),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('诊断日志'),
+            subtitle: const Text('查看、导出或清空本地诊断记录'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/diagnostics'),
+          ),
           const Divider(indent: 16, endIndent: 16),
           _SectionHeader(title: '关于'),
           const ListTile(

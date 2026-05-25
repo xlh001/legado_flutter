@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-25-diagnostics-ui/prd.md", "reason": "Acceptance criteria for diagnostics UI"}
+{"file": ".trellis/spec/flutter-app/testing.md", "reason": "Verify widget tests follow project conventions"}
+{"file": ".trellis/spec/flutter-app/quality-and-anti-patterns.md", "reason": "No forbidden patterns introduced"}
+{"file": ".trellis/spec/flutter-app/directory-structure.md", "reason": "Verify new page placed correctly under features/settings/"}
+{"file": ".trellis/spec/cross-language/frb-bridge.md", "reason": "Verify no generated FRB files edited"}
+{"file": "flutter_app/lib/core/diagnostics/diagnostic_log.dart", "reason": "Verify facade API usage matches reader/logger contract"}
+{"file": "flutter_app/lib/core/diagnostics/diagnostic_log_reader.dart", "reason": "Verify reader/tail/export/clear/stats API used correctly"}

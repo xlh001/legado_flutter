@@ -27,6 +27,7 @@ import '../features/rule_sub/rule_sub_page.dart';
 import '../features/qr/qr_scan_page.dart';
 import '../features/remote_books/remote_books_page.dart';
 import '../features/bookshelf/bookshelf_manage_page.dart';
+import '../features/settings/diagnostics_page.dart';
 
 final router = GoRouter(
   initialLocation: '/bookshelf',
@@ -200,6 +201,11 @@ final router = GoRouter(
     GoRoute(
       path: '/bookshelf-manage',
       builder: (_, __) => const BookshelfManagePage(),
+    ),
+    // Task 05-25: 诊断日志页。Settings → 工具 → 诊断日志 入口。
+    GoRoute(
+      path: '/diagnostics',
+      builder: (_, __) => const DiagnosticsPage(),
     ),
   ],
 );

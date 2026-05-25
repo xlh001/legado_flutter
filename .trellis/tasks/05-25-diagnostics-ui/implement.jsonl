@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/05-25-diagnostics-ui/prd.md", "reason": "Requirements, acceptance criteria, out of scope"}
+{"file": ".trellis/tasks/archive/2026-05/05-25-local-diagnostic-logging-system/prd.md", "reason": "Original logging system design, UI spec, export/share behavior, diagnostics page layout"}
+{"file": "flutter_app/lib/core/router.dart", "reason": "Central route table to add /diagnostics"}

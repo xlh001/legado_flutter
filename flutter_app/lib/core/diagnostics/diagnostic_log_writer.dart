@@ -25,6 +25,23 @@ class DiagnosticLogConfig {
     this.maxQueueSize = 1000,
   });
 
+  DiagnosticLogConfig copyWith({
+    bool? enabled,
+    DiagnosticLogLevel? minLevel,
+    int? maxFiles,
+    int? maxBytesPerFile,
+    int? maxAgeDays,
+    int? maxQueueSize,
+  }) =>
+      DiagnosticLogConfig(
+        enabled: enabled ?? this.enabled,
+        minLevel: minLevel ?? this.minLevel,
+        maxFiles: maxFiles ?? this.maxFiles,
+        maxBytesPerFile: maxBytesPerFile ?? this.maxBytesPerFile,
+        maxAgeDays: maxAgeDays ?? this.maxAgeDays,
+        maxQueueSize: maxQueueSize ?? this.maxQueueSize,
+      );
+
   Map<String, Object?> toMetadata() => <String, Object?>{
         'enabled': enabled,
         'level': minLevel.key,
