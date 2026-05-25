@@ -11,6 +11,26 @@ import '../../core/providers.dart';
 import '../../core/util/platform_int64.dart';
 import '../../src/rust/api.dart' as rust_api;
 
+enum _RssSourceListEntryType { header, source }
+
+class _RssSourceListEntry {
+  final _RssSourceListEntryType type;
+  final String groupName;
+  final int count;
+  final Map<String, dynamic>? record;
+
+  const _RssSourceListEntry.header({
+    required this.groupName,
+    required this.count,
+  })  : type = _RssSourceListEntryType.header,
+        record = null;
+
+  const _RssSourceListEntry.source(this.record)
+      : type = _RssSourceListEntryType.source,
+        groupName = '',
+        count = 0;
+}
+
 /// RSS 源管理页（批次 16 / 05-19）。
 ///
 /// 数据来源：[`rust_api.rssSourceListAll`]。每条记录是 `RssSource` 的
@@ -197,8 +217,7 @@ class _RssSourceManagePageState extends ConsumerState<RssSourceManagePage> {
       final idx = _records.indexOf(record);
       if (idx < 0) return; // record 已不在列表（被 import/delete 替换）
       setState(() {
-        _records = List.of(_records)
-          ..[idx] = {...record, 'enabled': newValue};
+        _records = List.of(_records)..[idx] = {...record, 'enabled': newValue};
       });
     } catch (e) {
       if (!mounted) return;
@@ -224,7 +243,8 @@ class _RssSourceManagePageState extends ConsumerState<RssSourceManagePage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('确定删除', style: TextStyle(color: context.al.destructive)),
+            child:
+                Text('确定删除', style: TextStyle(color: context.al.destructive)),
           ),
         ],
       ),
@@ -309,15 +329,34 @@ class _RssSourceManagePageState extends ConsumerState<RssSourceManagePage> {
   }
 
   Widget _buildList(BuildContext context) {
+    final entries = _buildListEntries();
+    return ListView.builder(
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        if (entry.type == _RssSourceListEntryType.header) {
+          return _buildSectionHeader(context, entry.groupName, entry.count);
+        }
+        return RepaintBoundary(
+          child: _buildSourceTile(context, entry.record!),
+        );
+      },
+    );
+  }
+
+  List<_RssSourceListEntry> _buildListEntries() {
     final grouped = _groupRecords();
-    final List<Widget> children = [];
+    final entries = <_RssSourceListEntry>[];
     for (final entry in grouped.entries) {
-      children.add(_buildSectionHeader(context, entry.key, entry.value.length));
-      for (final r in entry.value) {
-        children.add(_buildSourceTile(context, r));
+      entries.add(_RssSourceListEntry.header(
+        groupName: entry.key,
+        count: entry.value.length,
+      ));
+      for (final record in entry.value) {
+        entries.add(_RssSourceListEntry.source(record));
       }
     }
-    return ListView(children: children);
+    return entries;
   }
 
   Widget _buildSectionHeader(BuildContext context, String name, int count) {
@@ -372,8 +411,10 @@ class _RssSourceManagePageState extends ConsumerState<RssSourceManagePage> {
           PopupMenuItem(
             value: 'delete',
             child: ListTile(
-              leading: Icon(Icons.delete_outline, color: context.al.destructive),
-              title: Text('删除', style: TextStyle(color: context.al.destructive)),
+              leading:
+                  Icon(Icons.delete_outline, color: context.al.destructive),
+              title:
+                  Text('删除', style: TextStyle(color: context.al.destructive)),
               contentPadding: EdgeInsets.zero,
             ),
           ),

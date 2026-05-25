@@ -17,6 +17,30 @@ import 'source_check_progress_page.dart';
 
 enum _SourceSortMode { defaults, respondTimeAsc, lastCheckAtDesc }
 
+class _SourceListItem {
+  final Map<String, dynamic> source;
+  final String id;
+  final String name;
+  final String url;
+  final bool enabled;
+  final int respondTime;
+  final int lastCheckAt;
+  final String lastError;
+
+  const _SourceListItem({
+    required this.source,
+    required this.id,
+    required this.name,
+    required this.url,
+    required this.enabled,
+    required this.respondTime,
+    required this.lastCheckAt,
+    required this.lastError,
+  });
+
+  bool get validId => id.isNotEmpty;
+}
+
 extension _SourceSortModeX on _SourceSortMode {
   String get label {
     switch (this) {
@@ -70,6 +94,11 @@ class _SourcePageState extends ConsumerState<SourcePage> {
   String _searchQuery = '';
   _SourceSortMode _sortMode = _SourceSortMode.defaults;
   bool _failuresOnly = false;
+  List<Map<String, dynamic>>? _cachedSourcesInput;
+  String? _cachedSearchQuery;
+  _SourceSortMode? _cachedSortMode;
+  bool? _cachedFailuresOnly;
+  List<_SourceListItem> _cachedSourceItems = const [];
 
   @override
   void dispose() {
@@ -88,8 +117,7 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
-      bottomNavigationBar:
-          _selectMode ? _buildBottomActionBar(context) : null,
+      bottomNavigationBar: _selectMode ? _buildBottomActionBar(context) : null,
       floatingActionButton: _selectMode
           ? null
           : FloatingActionButton(
@@ -191,7 +219,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       height: 56,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        border: Border(top: BorderSide(color: cs.outlineVariant.withAlpha(0x40))),
+        border:
+            Border(top: BorderSide(color: cs.outlineVariant.withAlpha(0x40))),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
@@ -235,8 +264,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
               children: [
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -260,8 +289,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                 const SizedBox(width: 8),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -434,162 +463,71 @@ class _SourcePageState extends ConsumerState<SourcePage> {
     );
   }
 
-  Widget _buildSourceList(BuildContext context, List<Map<String, dynamic>> sources) {
-    final filtered = (_searchQuery.isEmpty
-            ? sources
-            : sources.where((s) {
-                final name = (s['name'] as String?)?.toLowerCase() ?? '';
-                return name.contains(_searchQuery.toLowerCase());
-              }).toList())
-        .where((s) => !_failuresOnly || _sourceError(s).isNotEmpty)
-        .toList();
-    _sortSources(filtered);
+  Widget _buildSourceList(
+      BuildContext context, List<Map<String, dynamic>> sources) {
+    final items = _deriveSourceItems(sources);
 
-    if (filtered.isEmpty) {
+    if (items.isEmpty) {
       return const Center(child: Text('暂无书源，点击右下角添加'));
     }
     return ListView.builder(
       padding: EdgeInsets.only(
-        left: 0, right: 0,
+        left: 0,
+        right: 0,
         bottom: _selectMode ? 0 : 80,
       ),
-      itemCount: filtered.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        final source = filtered[index];
-        final id = source['id'] is String ? source['id'] as String : '';
-        final validId = id.isNotEmpty;
-        final enabled = source['enabled'] == true;
-        final respondTime = _sourceInt(source, 'respond_time');
-        final lastError = _sourceError(source);
-        final cs = Theme.of(context).colorScheme;
-
-        Widget leading;
-        if (_selectMode) {
-          leading = Checkbox(
-            value: validId && _selectedIds.contains(id),
-            onChanged: validId ? (_) => _toggleSelect(id) : null,
-          );
-        } else {
-          leading = const SizedBox(width: 24);
-        }
-
-        return InkWell(
-          onTap: validId
-              ? (_selectMode
-                  ? () => _toggleSelect(id)
-                  : () => _showSourceActions(context, source))
-              : null,
-          onLongPress:
-              _selectMode || !validId ? null : () => _enterSelectMode(id),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                leading,
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              source['name'] as String? ?? '未知书源',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        source['url'] as String? ?? '',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                if (!_selectMode) ...[
-                  if (respondTime > 0) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '${respondTime}ms',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  if (lastError.isNotEmpty) ...[
-                    Tooltip(
-                      message: lastError,
-                      child: Icon(
-                        Icons.error_outline,
-                        color: context.al.destructive,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Switch(
-                    value: enabled,
-                    onChanged:
-                        validId ? (val) => _toggleSource(id, val) : null,
-                  ),
-                  const SizedBox(width: 4),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: enabled
-                          ? const Color(0xFF00C853)
-                          : cs.outlineVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(Icons.open_in_new,
-                        size: 20, color: cs.onSurfaceVariant),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () =>
-                        _showSourceActions(context, source),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(Icons.more_vert,
-                        size: 20, color: cs.onSurfaceVariant),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () =>
-                        _showSourceActions(context, source),
-                  ),
-                ],
-              ],
-            ),
+        final item = items[index];
+        return RepaintBoundary(
+          child: _SourceListTile(
+            key: ValueKey(item.id.isEmpty ? 'source-$index' : item.id),
+            item: item,
+            selectMode: _selectMode,
+            selected: item.validId && _selectedIds.contains(item.id),
+            onToggleSelect: () => _toggleSelect(item.id),
+            onEnterSelectMode: () => _enterSelectMode(item.id),
+            onToggleSource: (enabled) => _toggleSource(item.id, enabled),
+            onOpenActions: () => _showSourceActions(context, item.source),
           ),
         );
       },
     );
+  }
+
+  List<_SourceListItem> _deriveSourceItems(List<Map<String, dynamic>> sources) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (identical(sources, _cachedSourcesInput) &&
+        query == _cachedSearchQuery &&
+        _sortMode == _cachedSortMode &&
+        _failuresOnly == _cachedFailuresOnly) {
+      return _cachedSourceItems;
+    }
+
+    final items = <_SourceListItem>[];
+    for (final source in sources) {
+      final name = source['name'] as String? ?? '未知书源';
+      if (query.isNotEmpty && !name.toLowerCase().contains(query)) continue;
+      final lastError = _sourceError(source);
+      if (_failuresOnly && lastError.isEmpty) continue;
+      items.add(_SourceListItem(
+        source: source,
+        id: source['id'] is String ? source['id'] as String : '',
+        name: name,
+        url: source['url'] as String? ?? '',
+        enabled: source['enabled'] == true,
+        respondTime: _sourceInt(source, 'respond_time'),
+        lastCheckAt: _sourceInt(source, 'last_check_at'),
+        lastError: lastError,
+      ));
+    }
+    _sortSourceItems(items);
+    _cachedSourcesInput = sources;
+    _cachedSearchQuery = query;
+    _cachedSortMode = _sortMode;
+    _cachedFailuresOnly = _failuresOnly;
+    _cachedSourceItems = items;
+    return items;
   }
 
   int _sourceInt(Map<String, dynamic> source, String key) {
@@ -603,14 +541,14 @@ class _SourcePageState extends ConsumerState<SourcePage> {
     return (source['last_check_error'] as String?)?.trim() ?? '';
   }
 
-  void _sortSources(List<Map<String, dynamic>> sources) {
+  void _sortSourceItems(List<_SourceListItem> sources) {
     switch (_sortMode) {
       case _SourceSortMode.defaults:
         return;
       case _SourceSortMode.respondTimeAsc:
         sources.sort((a, b) {
-          final av = _sourceInt(a, 'respond_time');
-          final bv = _sourceInt(b, 'respond_time');
+          final av = a.respondTime;
+          final bv = b.respondTime;
           if (av == 0 && bv == 0) return 0;
           if (av == 0) return 1;
           if (bv == 0) return -1;
@@ -619,8 +557,7 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         return;
       case _SourceSortMode.lastCheckAtDesc:
         sources.sort(
-          (a, b) => _sourceInt(b, 'last_check_at')
-              .compareTo(_sourceInt(a, 'last_check_at')),
+          (a, b) => b.lastCheckAt.compareTo(a.lastCheckAt),
         );
         return;
     }
@@ -632,7 +569,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       final dbPath = await ref.read(dbPathProvider.future);
       await rust_api.setSourceEnabled(dbPath: dbPath, id: id, enabled: enabled);
       ref.invalidate(allSourcesProvider);
-      DiagnosticLog.info('source.edit', 'Source ${enabled ? "enabled" : "disabled"}',
+      DiagnosticLog.info(
+          'source.edit', 'Source ${enabled ? "enabled" : "disabled"}',
           metadata: {'source_id': id});
     } catch (e) {
       DiagnosticLog.warn('source.edit', 'Failed to toggle source',
@@ -656,12 +594,17 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '书源名称')),
-            TextField(controller: urlCtrl, decoration: const InputDecoration(labelText: '书源 URL')),
+            TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: '书源名称')),
+            TextField(
+                controller: urlCtrl,
+                decoration: const InputDecoration(labelText: '书源 URL')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () async {
               final name = nameCtrl.text.trim();
@@ -670,9 +613,11 @@ class _SourcePageState extends ConsumerState<SourcePage> {
               try {
                 await ref.read(dbInitializedProvider.future);
                 final dbPath = await ref.read(dbPathProvider.future);
-                await rust_api.createSource(dbPath: dbPath, name: name, url: url);
+                await rust_api.createSource(
+                    dbPath: dbPath, name: name, url: url);
                 ref.invalidate(allSourcesProvider);
-                DiagnosticLog.info('source.add', 'Source added', metadata: {'source_name': name});
+                DiagnosticLog.info('source.add', 'Source added',
+                    metadata: {'source_name': name});
                 if (ctx.mounted) Navigator.pop(ctx);
               } catch (e) {
                 DiagnosticLog.warn('source.add', 'Failed to add source',
@@ -733,7 +678,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                           json: json,
                         );
                         ref.invalidate(allSourcesProvider);
-                        DiagnosticLog.info('source.import', 'Imported sources from JSON',
+                        DiagnosticLog.info(
+                            'source.import', 'Imported sources from JSON',
                             metadata: {'count': count});
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (mounted) {
@@ -742,7 +688,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
                           );
                         }
                       } catch (e) {
-                        DiagnosticLog.warn('source.import', 'Import from JSON failed',
+                        DiagnosticLog.warn(
+                            'source.import', 'Import from JSON failed',
                             error: e);
                         if (ctx.mounted) {
                           setDialogState(() => importing = false);
@@ -800,7 +747,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
     );
   }
 
-  Future<void> _showValidateDialog(BuildContext context, Map<String, dynamic> source) async {
+  Future<void> _showValidateDialog(
+      BuildContext context, Map<String, dynamic> source) async {
     try {
       await ref.read(dbInitializedProvider.future);
       final dbPath = await ref.read(dbPathProvider.future);
@@ -811,10 +759,16 @@ class _SourcePageState extends ConsumerState<SourcePage> {
         sourceId: sourceId,
       );
       final List<dynamic> issues = const JsonDecoder().convert(resultJson);
-      final errorCount = issues.where((i) => (i as Map)['severity'] == 'error').length;
-      final warnCount = issues.where((i) => (i as Map)['severity'] == 'warning').length;
-      DiagnosticLog.info('source.validate', 'Validated source',
-          metadata: {'source_id': sourceId, 'source_name': sourceName, 'errors': errorCount, 'warnings': warnCount});
+      final errorCount =
+          issues.where((i) => (i as Map)['severity'] == 'error').length;
+      final warnCount =
+          issues.where((i) => (i as Map)['severity'] == 'warning').length;
+      DiagnosticLog.info('source.validate', 'Validated source', metadata: {
+        'source_id': sourceId,
+        'source_name': sourceName,
+        'errors': errorCount,
+        'warnings': warnCount
+      });
       if (!mounted) return;
       // 批次 21 (05-19): 即使静态校验通过 (issues 空)，仍弹 dialog 让用户能进入"实跑测试"。
       showDialog(
@@ -918,7 +872,8 @@ class _SourcePageState extends ConsumerState<SourcePage> {
       final dbPath = await ref.read(dbPathProvider.future);
       await rust_api.deleteSource(dbPath: dbPath, id: id);
       ref.invalidate(allSourcesProvider);
-      DiagnosticLog.info('source.delete', 'Source deleted', metadata: {'source_id': id});
+      DiagnosticLog.info('source.delete', 'Source deleted',
+          metadata: {'source_id': id});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('书源已删除')),
@@ -1087,6 +1042,192 @@ class _SourcePageState extends ConsumerState<SourcePage> {
   }
 }
 
+class _SourceListTile extends StatelessWidget {
+  final _SourceListItem item;
+  final bool selectMode;
+  final bool selected;
+  final VoidCallback onToggleSelect;
+  final VoidCallback onEnterSelectMode;
+  final ValueChanged<bool> onToggleSource;
+  final VoidCallback onOpenActions;
+
+  const _SourceListTile({
+    super.key,
+    required this.item,
+    required this.selectMode,
+    required this.selected,
+    required this.onToggleSelect,
+    required this.onEnterSelectMode,
+    required this.onToggleSource,
+    required this.onOpenActions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap:
+          item.validId ? (selectMode ? onToggleSelect : onOpenActions) : null,
+      onLongPress: selectMode || !item.validId ? null : onEnterSelectMode,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            _buildLeading(),
+            const SizedBox(width: 12),
+            Expanded(child: _SourceListText(item: item)),
+            if (!selectMode) ...[
+              const SizedBox(width: 8),
+              _SourceListActions(
+                item: item,
+                colorScheme: cs,
+                onToggleSource: onToggleSource,
+                onOpenActions: onOpenActions,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLeading() {
+    if (!selectMode) return const SizedBox(width: 24);
+    return Checkbox(
+      value: selected,
+      onChanged: item.validId ? (_) => onToggleSelect() : null,
+    );
+  }
+}
+
+class _SourceListText extends StatelessWidget {
+  final _SourceListItem item;
+
+  const _SourceListText({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          item.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          item.url,
+          style: TextStyle(
+            fontSize: 12,
+            color: cs.onSurfaceVariant,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+class _SourceListActions extends StatelessWidget {
+  final _SourceListItem item;
+  final ColorScheme colorScheme;
+  final ValueChanged<bool> onToggleSource;
+  final VoidCallback onOpenActions;
+
+  const _SourceListActions({
+    required this.item,
+    required this.colorScheme,
+    required this.onToggleSource,
+    required this.onOpenActions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (item.respondTime > 0) ...[
+          _SourceLatencyChip(
+            respondTime: item.respondTime,
+            colorScheme: colorScheme,
+          ),
+          const SizedBox(width: 6),
+        ],
+        if (item.lastError.isNotEmpty) ...[
+          Tooltip(
+            message: item.lastError,
+            child: Icon(
+              Icons.error_outline,
+              color: context.al.destructive,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
+        Switch(
+          value: item.enabled,
+          onChanged: item.validId ? onToggleSource : null,
+        ),
+        const SizedBox(width: 4),
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: item.enabled
+                ? const Color(0xFF00C853)
+                : colorScheme.outlineVariant,
+          ),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          icon: Icon(Icons.more_vert,
+              size: 20, color: colorScheme.onSurfaceVariant),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+          tooltip: '操作',
+          onPressed: onOpenActions,
+        ),
+      ],
+    );
+  }
+}
+
+class _SourceLatencyChip extends StatelessWidget {
+  final int respondTime;
+  final ColorScheme colorScheme;
+
+  const _SourceLatencyChip({
+    required this.respondTime,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '${respondTime}ms',
+        style: TextStyle(
+          fontSize: 11,
+          color: colorScheme.onPrimaryContainer,
+        ),
+      ),
+    );
+  }
+}
+
 class _BatchCheckConfigDialog extends StatefulWidget {
   final List<Map<String, dynamic>> sources;
 
@@ -1134,9 +1275,8 @@ class _BatchCheckConfigDialogState extends State<_BatchCheckConfigDialog> {
       SourceCheckProgressArgs(
         sources: widget.sources,
         sourceIds: ids,
-        keyword: _keywordCtrl.text.trim().isEmpty
-            ? '我的'
-            : _keywordCtrl.text.trim(),
+        keyword:
+            _keywordCtrl.text.trim().isEmpty ? '我的' : _keywordCtrl.text.trim(),
         stages: _stages.toList(growable: false),
         timeoutSecs: _timeoutSecs.round(),
         concurrency: _concurrency.round(),
@@ -1313,12 +1453,21 @@ class _LiveTestDialogState extends ConsumerState<_LiveTestDialog> {
       });
       final passCount = stages.where((s) => s['ok'] == true).length;
       final failCount = stages.length - passCount;
-      DiagnosticLog.info('source.live_test', 'Live test completed',
-          metadata: {'source_id': widget.sourceId, 'source_name': widget.sourceName, 'stages': stages.length, 'passed': passCount, 'failed': failCount});
+      DiagnosticLog.info('source.live_test', 'Live test completed', metadata: {
+        'source_id': widget.sourceId,
+        'source_name': widget.sourceName,
+        'stages': stages.length,
+        'passed': passCount,
+        'failed': failCount
+      });
     } catch (e) {
       if (!mounted) return;
       DiagnosticLog.warn('source.live_test', 'Live test failed',
-          error: e, metadata: {'source_id': widget.sourceId, 'source_name': widget.sourceName});
+          error: e,
+          metadata: {
+            'source_id': widget.sourceId,
+            'source_name': widget.sourceName
+          });
       setState(() {
         _running = false;
         _error = e.toString();
@@ -1413,8 +1562,7 @@ class _LiveTestDialogState extends ConsumerState<_LiveTestDialog> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Text('开始测试'),
                 ),
@@ -1434,8 +1582,8 @@ class _LiveTestDialogState extends ConsumerState<_LiveTestDialog> {
             if (_stages != null && _staticIssues.isNotEmpty) ...[
               const Divider(height: 1),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
                   '静态校验问题 (${_staticIssues.length})',
                   style: Theme.of(context).textTheme.labelLarge,
@@ -1459,8 +1607,7 @@ class _LiveTestDialogState extends ConsumerState<_LiveTestDialog> {
                   ),
                   title: Text(
                     (issue['field'] as String?) ?? '',
-                    style: TextStyle(
-                        fontSize: 11, color: context.al.onSurface),
+                    style: TextStyle(fontSize: 11, color: context.al.onSurface),
                   ),
                   subtitle: Text((issue['message'] as String?) ?? '',
                       style: const TextStyle(fontSize: 12)),

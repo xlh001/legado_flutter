@@ -68,9 +68,8 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       // When a test reader is injected, skip the disk-based load and
       // use default values (no real file I/O needed).
       final isTest = widget.readerForTest != null;
-      final enabled = isTest
-          ? true
-          : await loadDiagnosticLoggingEnabledFromDisk();
+      final enabled =
+          isTest ? true : await loadDiagnosticLoggingEnabledFromDisk();
 
       final stats = await reader.stats();
       final lines = await reader.tail(maxLines: 500);
@@ -221,12 +220,24 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     final stats = _stats;
     final isEmpty = stats == null || stats.fileCount == 0;
 
-    return ListView(
-      children: [
-        _buildControls(),
-        if (!isEmpty) _buildStatsCard(stats, theme),
-        if (!isEmpty) _buildLogList(theme),
-        if (isEmpty) _buildEmptyState(theme),
+    if (isEmpty) {
+      return ListView(
+        children: [
+          _buildControls(),
+          _buildEmptyState(theme),
+        ],
+      );
+    }
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: _buildControls()),
+        SliverToBoxAdapter(child: _buildStatsCard(stats, theme)),
+        SliverToBoxAdapter(child: _buildLogHeader(theme)),
+        SliverList.builder(
+          itemCount: _recentLines.length,
+          itemBuilder: (context, index) => _LogTile(event: _recentLines[index]),
+        ),
       ],
     );
   }
@@ -243,14 +254,15 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
         const Divider(indent: 16, endIndent: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: [
               OutlinedButton.icon(
                 onPressed: _loading ? null : _load,
                 icon: const Icon(Icons.refresh),
                 label: const Text('刷新'),
               ),
-              const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: (_exporting || _loading) ? null : _export,
                 icon: _exporting
@@ -262,7 +274,6 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
                     : const Icon(Icons.ios_share),
                 label: const Text('导出'),
               ),
-              const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: (_loading || _exporting) ? null : _clear,
                 icon: const Icon(Icons.delete_outline),
@@ -288,16 +299,15 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('日志信息',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.primary)),
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(color: theme.colorScheme.primary)),
               const SizedBox(height: 12),
               _statsRow('文件数量', '${stats.fileCount}'),
               const SizedBox(height: 4),
               _statsRow('总大小', _formatSize(stats.totalBytes)),
               if (stats.newestModified != null) ...[
                 const SizedBox(height: 4),
-                _statsRow(
-                    '最新记录', _formatDateTimeLocal(stats.newestModified!)),
+                _statsRow('最新记录', _formatDateTimeLocal(stats.newestModified!)),
               ],
             ],
           ),
@@ -314,26 +324,19 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
           child: Text(label,
               style: const TextStyle(color: Colors.grey, fontSize: 13)),
         ),
-        Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 13))),
+        Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
       ],
     );
   }
 
-  Widget _buildLogList(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            '最近记录 (${_recentLines.length})',
-            style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.primary),
-          ),
-        ),
-        ..._recentLines.map((event) => _LogTile(event: event)),
-      ],
+  Widget _buildLogHeader(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Text(
+        '最近记录 (${_recentLines.length})',
+        style: theme.textTheme.titleSmall
+            ?.copyWith(color: theme.colorScheme.primary),
+      ),
     );
   }
 
@@ -348,14 +351,14 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
             const SizedBox(height: 16),
             Text(
               '暂无诊断日志',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurface.withAlpha(150)),
+              style: theme.textTheme.bodyLarge
+                  ?.copyWith(color: theme.colorScheme.onSurface.withAlpha(150)),
             ),
             const SizedBox(height: 8),
             Text(
               '应用运行时的事件将记录在此',
-              style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withAlpha(100)),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurface.withAlpha(100)),
             ),
           ],
         ),
@@ -414,7 +417,8 @@ class _LogTileState extends State<_LogTile> {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: InkWell(
-        onTap: hasDetail ? () => safeSetState(() => _expanded = !_expanded) : null,
+        onTap:
+            hasDetail ? () => safeSetState(() => _expanded = !_expanded) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Column(
@@ -423,11 +427,10 @@ class _LogTileState extends State<_LogTile> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: DiagnosticsPage.levelColor(level)
-                          .withAlpha(30),
+                      color: DiagnosticsPage.levelColor(level).withAlpha(30),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -444,16 +447,14 @@ class _LogTileState extends State<_LogTile> {
                     _formatTsCompact(ts),
                     style: TextStyle(
                         fontSize: 11,
-                        color:
-                            theme.colorScheme.onSurface.withAlpha(150)),
+                        color: theme.colorScheme.onSurface.withAlpha(150)),
                   ),
                   const Spacer(),
                   if (hasDetail)
                     Icon(
                       _expanded ? Icons.expand_less : Icons.expand_more,
                       size: 18,
-                      color:
-                          theme.colorScheme.onSurface.withAlpha(120),
+                      color: theme.colorScheme.onSurface.withAlpha(120),
                     ),
                 ],
               ),
@@ -463,8 +464,7 @@ class _LogTileState extends State<_LogTile> {
                   category,
                   style: TextStyle(
                       fontSize: 12,
-                      color:
-                          theme.colorScheme.onSurface.withAlpha(180),
+                      color: theme.colorScheme.onSurface.withAlpha(180),
                       fontWeight: FontWeight.w500),
                 ),
               Text(
@@ -478,8 +478,7 @@ class _LogTileState extends State<_LogTile> {
                 if (error != null) ...[
                   Text('错误:', style: _detailLabelStyle(theme)),
                   const SizedBox(height: 2),
-                  Text(error,
-                      style: _detailValueStyle(theme, Colors.red)),
+                  Text(error, style: _detailValueStyle(theme, Colors.red)),
                   const SizedBox(height: 8),
                 ],
                 if (stack != null) ...[

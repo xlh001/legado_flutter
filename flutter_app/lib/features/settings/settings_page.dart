@@ -94,219 +94,243 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeModeProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
-      body: ListView(
-        children: [
-          _SectionHeader(title: '通知'),
-          ListTile(
-            leading: Icon(
-              _notificationPermissionGranted
-                  ? Icons.notifications_active
-                  : Icons.notifications_off_outlined,
-              color: _notificationPermissionGranted
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-            title: const Text('通知权限'),
-            subtitle: Text(
-              _isCheckingPermission
-                  ? '检查中...'
-                  : _notificationPermissionGranted
-                      ? '已授权'
-                      : '未授权（点击开启）',
-            ),
-            trailing: Switch(
-              value: _notificationPermissionGranted,
-              onChanged:
-                  _isCheckingPermission ? null : _onNotificationSwitchToggled,
-            ),
-          ),
-          const Divider(indent: 16, endIndent: 16),
-          _SectionHeader(title: '显示'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Icon(Icons.format_size),
-                const SizedBox(width: 12),
-                const Text('字体大小'),
-                const SizedBox(width: 8),
-                Text(
-                  '${ref.watch(fontSizeProvider).round()}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                Expanded(
-                  child: Slider(
-                    value: ref.watch(fontSizeProvider),
-                    min: 14,
-                    max: 28,
-                    divisions: 14,
-                    label: '${ref.watch(fontSizeProvider).round()}',
-                    onChanged: (value) {
-                      // BATCH-18d (F-W2A-008)：派生 fontSizeProvider 后，
-                      // 字号写入必须走 readerSettingsProvider；这样 reader
-                      // 端与 settings 页共享同一 source of truth。
-                      final notifier = ref.read(readerSettingsProvider.notifier);
-                      notifier.state = notifier.state.copyWith(fontSize: value);
-                      saveReaderSettingsToDisk(notifier.state);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          RadioGroup<ThemeMode>(
-            groupValue: themeMode,
-            onChanged: (value) {
-              if (value != null) {
-                ref.read(themeModeProvider.notifier).state = value;
-                saveThemeModeToDisk(value);
-              }
-            },
-            child: Column(
-              children: ThemeMode.values
-                  .map(
-                    (mode) => RadioListTile<ThemeMode>(
-                      title: Text(_themeModeLabel(mode)),
-                      value: mode,
-                      secondary: Icon(_themeModeIcon(mode)),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          const Divider(indent: 16, endIndent: 16),
-          _SectionHeader(title: '主题色'),
-          const _ColorPickerSection(),
-          const Divider(indent: 16, endIndent: 16),
-          _SectionHeader(title: '主页'),
-          // BATCH-26c (05-22): 底栏「发现」/「订阅」tab 显隐 toggle，
-          // 对齐原 legado `pref_config_other.xml` showDiscovery / showRss
-          // SwitchPreference。toggle 关闭后 _AppShell 的 NavigationBar
-          // 自动隐藏对应 destination；ShellBranch 与 GoRoute 不删，用户
-          // 仍可直接 URL `/explore` / `/rss` 访问。
-          SwitchListTile(
-            secondary: const Icon(Icons.explore_outlined),
-            title: const Text('显示「发现」'),
-            subtitle: const Text('底栏显示「发现」tab'),
-            value: ref.watch(showDiscoveryProvider),
-            onChanged: (v) {
-              ref.read(showDiscoveryProvider.notifier).state = v;
-              saveShowDiscoveryToDisk(v);
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.rss_feed_outlined),
-            title: const Text('显示「订阅」'),
-            subtitle: const Text('底栏显示「订阅」tab'),
-            value: ref.watch(showRssProvider),
-            onChanged: (v) {
-              ref.read(showRssProvider.notifier).state = v;
-              saveShowRssToDisk(v);
-            },
-          ),
-          // BATCH-26d (05-22): 启动默认页。对齐原 legado
-          // `pref_config_other.xml` defaultHomePage NameListPreference +
-          // `MainActivity.kt:385-398` upHomePage()。点击弹 4 选对话框
-          // （书架 / 发现 / 订阅 / 我的），选完写 provider + 持久化；
-          // 重启后 startup postFrame 跳到对应 tab。
-          ListTile(
-            leading: const Icon(Icons.home_outlined),
-            title: const Text('启动默认页'),
-            subtitle: Text(ref.watch(defaultHomePageProvider).label),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showDefaultHomePageDialog(context),
-          ),
-          // BATCH-27d-followup (05-22): 「点书名直接打开阅读」 toggle。
-          // 默认 false（保持 BATCH-27d 现状：点书名 no-op，仅长按出菜单
-          // / 选择模式 toggle 选中）。on=点书名 push '/reader' 直接进
-          // 阅读，与主书架点书名行为一致。选择模式优先级最高，永远
-          // toggle 选中（与本 toggle 状态无关）。
-          SwitchListTile(
-            secondary: const Icon(Icons.menu_book_outlined),
-            title: const Text('点书名直接打开阅读'),
-            subtitle: const Text('「书架管理」页点书名时直接进入阅读'),
-            value: ref.watch(bookshelfManageOpenReaderProvider),
-            onChanged: (v) {
-              ref.read(bookshelfManageOpenReaderProvider.notifier).state = v;
-              saveBookshelfManageOpenReaderToDisk(v);
-            },
-          ),
-          const Divider(indent: 16, endIndent: 16),
-          _SectionHeader(title: '工具'),
-          // BATCH-18f (F-W2B-016)：以下 5 项原本在 bookshelf AppBar PopupMenu，
-          // 重组到此处与 replace_rules 同列于"工具"段，bookshelf 仅保留书架
-          // 场景高频 4 项（manage_groups / import_local / qr_scan /
-          // rss_source_manage）。router.dart 路由表 0 改动。
-          ListTile(
-            leading: const Icon(Icons.settings_backup_restore),
-            title: const Text('备份/恢复'),
-            subtitle: const Text('导出/导入书架数据到 zip'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/backup'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.timer_outlined),
-            title: const Text('阅读统计'),
-            subtitle: const Text('查看阅读时长'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/read-stats'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cleaning_services_outlined),
-            title: const Text('缓存管理'),
-            subtitle: const Text('清理章节内容缓存'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/cache-management'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.star_outline),
-            title: const Text('RSS 收藏'),
-            subtitle: const Text('已收藏的 RSS 文章'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/rss-favorites'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_sync_outlined),
-            title: const Text('订阅源'),
-            subtitle: const Text('RuleSub 订阅管理'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/rule-subs'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.rule),
-            title: const Text('替换规则'),
-            subtitle: const Text('管理正则替换规则'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/replace-rules'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.bug_report_outlined),
-            title: const Text('诊断日志'),
-            subtitle: const Text('查看、导出或清空本地诊断记录'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/diagnostics'),
-          ),
-          const Divider(indent: 16, endIndent: 16),
-          _SectionHeader(title: '关于'),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Legado Reader'),
-            subtitle: Text('版本 0.1.0'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.code),
-            title: Text('技术栈'),
-            subtitle: Text('Flutter + Rust (flutter_rust_bridge)'),
-          ),
-        ],
+      body: ListView.builder(
+        itemCount: 29,
+        itemBuilder: (context, index) => _buildSettingItem(
+          context,
+          index,
+          colorScheme,
+        ),
       ),
     );
+  }
+
+  Widget _buildSettingItem(
+    BuildContext context,
+    int index,
+    ColorScheme colorScheme,
+  ) {
+    switch (index) {
+      case 0:
+        return const _SectionHeader(title: '通知');
+      case 1:
+        return ListTile(
+          leading: Icon(
+            _notificationPermissionGranted
+                ? Icons.notifications_active
+                : Icons.notifications_off_outlined,
+            color: _notificationPermissionGranted
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+          title: const Text('通知权限'),
+          subtitle: Text(
+            _isCheckingPermission
+                ? '检查中...'
+                : _notificationPermissionGranted
+                    ? '已授权'
+                    : '未授权（点击开启）',
+          ),
+          trailing: Switch(
+            value: _notificationPermissionGranted,
+            onChanged:
+                _isCheckingPermission ? null : _onNotificationSwitchToggled,
+          ),
+        );
+      case 2:
+        return const Divider(indent: 16, endIndent: 16);
+      case 3:
+        return const _SectionHeader(title: '显示');
+      case 4:
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              const Icon(Icons.format_size),
+              const SizedBox(width: 12),
+              const Text('字体大小'),
+              const SizedBox(width: 8),
+              Text(
+                '${ref.watch(fontSizeProvider).round()}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Expanded(
+                child: Slider(
+                  value: ref.watch(fontSizeProvider),
+                  min: 14,
+                  max: 28,
+                  divisions: 14,
+                  label: '${ref.watch(fontSizeProvider).round()}',
+                  onChanged: (value) {
+                    // BATCH-18d (F-W2A-008)：派生 fontSizeProvider 后，
+                    // 字号写入必须走 readerSettingsProvider；这样 reader
+                    // 端与 settings 页共享同一 source of truth。
+                    final notifier = ref.read(readerSettingsProvider.notifier);
+                    notifier.state = notifier.state.copyWith(fontSize: value);
+                    saveReaderSettingsToDisk(notifier.state);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      case 5:
+        return const SizedBox(height: 8);
+      case 6:
+        return RadioGroup<ThemeMode>(
+          groupValue: ref.watch(themeModeProvider),
+          onChanged: (value) {
+            if (value != null) {
+              ref.read(themeModeProvider.notifier).state = value;
+              saveThemeModeToDisk(value);
+            }
+          },
+          child: Column(
+            children: ThemeMode.values
+                .map(
+                  (mode) => RadioListTile<ThemeMode>(
+                    title: Text(_themeModeLabel(mode)),
+                    value: mode,
+                    secondary: Icon(_themeModeIcon(mode)),
+                  ),
+                )
+                .toList(),
+          ),
+        );
+      case 7:
+        return const Divider(indent: 16, endIndent: 16);
+      case 8:
+        return const _SectionHeader(title: '主题色');
+      case 9:
+        return const _ColorPickerSection();
+      case 10:
+        return const Divider(indent: 16, endIndent: 16);
+      case 11:
+        return const _SectionHeader(title: '主页');
+      case 12:
+        return SwitchListTile(
+          secondary: const Icon(Icons.explore_outlined),
+          title: const Text('显示「发现」'),
+          subtitle: const Text('底栏显示「发现」tab'),
+          value: ref.watch(showDiscoveryProvider),
+          onChanged: (v) {
+            ref.read(showDiscoveryProvider.notifier).state = v;
+            saveShowDiscoveryToDisk(v);
+          },
+        );
+      case 13:
+        return SwitchListTile(
+          secondary: const Icon(Icons.rss_feed_outlined),
+          title: const Text('显示「订阅」'),
+          subtitle: const Text('底栏显示「订阅」tab'),
+          value: ref.watch(showRssProvider),
+          onChanged: (v) {
+            ref.read(showRssProvider.notifier).state = v;
+            saveShowRssToDisk(v);
+          },
+        );
+      case 14:
+        return ListTile(
+          leading: const Icon(Icons.home_outlined),
+          title: const Text('启动默认页'),
+          subtitle: Text(ref.watch(defaultHomePageProvider).label),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showDefaultHomePageDialog(context),
+        );
+      case 15:
+        return SwitchListTile(
+          secondary: const Icon(Icons.menu_book_outlined),
+          title: const Text('点书名直接打开阅读'),
+          subtitle: const Text('「书架管理」页点书名时直接进入阅读'),
+          value: ref.watch(bookshelfManageOpenReaderProvider),
+          onChanged: (v) {
+            ref.read(bookshelfManageOpenReaderProvider.notifier).state = v;
+            saveBookshelfManageOpenReaderToDisk(v);
+          },
+        );
+      case 16:
+        return const Divider(indent: 16, endIndent: 16);
+      case 17:
+        return const _SectionHeader(title: '工具');
+      case 18:
+        return ListTile(
+          leading: const Icon(Icons.settings_backup_restore),
+          title: const Text('备份/恢复'),
+          subtitle: const Text('导出/导入书架数据到 zip'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/backup'),
+        );
+      case 19:
+        return ListTile(
+          leading: const Icon(Icons.timer_outlined),
+          title: const Text('阅读统计'),
+          subtitle: const Text('查看阅读时长'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/read-stats'),
+        );
+      case 20:
+        return ListTile(
+          leading: const Icon(Icons.cleaning_services_outlined),
+          title: const Text('缓存管理'),
+          subtitle: const Text('清理章节内容缓存'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/cache-management'),
+        );
+      case 21:
+        return ListTile(
+          leading: const Icon(Icons.star_outline),
+          title: const Text('RSS 收藏'),
+          subtitle: const Text('已收藏的 RSS 文章'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/rss-favorites'),
+        );
+      case 22:
+        return ListTile(
+          leading: const Icon(Icons.cloud_sync_outlined),
+          title: const Text('订阅源'),
+          subtitle: const Text('RuleSub 订阅管理'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/rule-subs'),
+        );
+      case 23:
+        return ListTile(
+          leading: const Icon(Icons.rule),
+          title: const Text('替换规则'),
+          subtitle: const Text('管理正则替换规则'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/replace-rules'),
+        );
+      case 24:
+        return ListTile(
+          leading: const Icon(Icons.bug_report_outlined),
+          title: const Text('诊断日志'),
+          subtitle: const Text('查看、导出或清空本地诊断记录'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/diagnostics'),
+        );
+      case 25:
+        return const Divider(indent: 16, endIndent: 16);
+      case 26:
+        return const _SectionHeader(title: '关于');
+      case 27:
+        return const ListTile(
+          leading: Icon(Icons.info_outline),
+          title: Text('Legado Reader'),
+          subtitle: Text('版本 0.1.0'),
+        );
+      case 28:
+        return const ListTile(
+          leading: Icon(Icons.code),
+          title: Text('技术栈'),
+          subtitle: Text('Flutter + Rust (flutter_rust_bridge)'),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
   String _themeModeLabel(ThemeMode mode) {
@@ -412,7 +436,8 @@ class _ColorPickerSection extends ConsumerWidget {
           subtitle: const Text('跟随系统壁纸自动生成配色（Android 12+）'),
           value: config.source == ColorSource.dynamic_,
           onChanged: (v) {
-            ref.read(colorSchemeConfigProvider.notifier)
+            ref
+                .read(colorSchemeConfigProvider.notifier)
                 .setSource(v ? ColorSource.dynamic_ : ColorSource.preset);
           },
         ),
@@ -427,7 +452,8 @@ class _ColorPickerSection extends ConsumerWidget {
                 final selected = config.presetSeed == color.toARGB32();
                 return GestureDetector(
                   onTap: () {
-                    ref.read(colorSchemeConfigProvider.notifier)
+                    ref
+                        .read(colorSchemeConfigProvider.notifier)
                         .setPresetSeed(color.toARGB32());
                   },
                   child: Container(

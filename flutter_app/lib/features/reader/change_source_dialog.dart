@@ -7,6 +7,13 @@ import '../../src/rust/api.dart' as rust_api;
 
 import '../../core/colors.dart';
 
+typedef ChangeSourceGetEnabledSources = Future<String> Function(String dbPath);
+typedef ChangeSourceSearchWithSource = Future<String> Function(
+  String dbPath,
+  String sourceId,
+  String keyword,
+);
+
 class ChangeSourceResult {
   final String sourceId;
   final String sourceName;
@@ -29,6 +36,8 @@ class ChangeSourceDialog extends StatefulWidget {
   final String bookAuthor;
   final String currentSourceId;
   final String currentSourceName;
+  final ChangeSourceGetEnabledSources? getEnabledSourcesOverride;
+  final ChangeSourceSearchWithSource? searchWithSourceOverride;
 
   const ChangeSourceDialog({
     super.key,
@@ -37,6 +46,8 @@ class ChangeSourceDialog extends StatefulWidget {
     required this.bookAuthor,
     required this.currentSourceId,
     required this.currentSourceName,
+    this.getEnabledSourcesOverride,
+    this.searchWithSourceOverride,
   });
 
   @override
@@ -54,6 +65,8 @@ class _ChangeSourceDialogState extends State<ChangeSourceDialog> {
   String? _selectedSourceId;
   late String _currentSourceId;
   final List<Map<String, dynamic>> _results = [];
+  final Set<String> _resultKeys = {};
+  int _searchSeq = 0;
 
   @override
   void initState() {
@@ -64,23 +77,29 @@ class _ChangeSourceDialogState extends State<ChangeSourceDialog> {
 
   @override
   void dispose() {
+    _searchSeq++;
     super.dispose();
   }
 
   Future<void> _startSearch() async {
+    if (!mounted) return;
+    final seq = ++_searchSeq;
     setState(() {
       _isSearching = true;
       _errorMessage = null;
       _results.clear();
+      _resultKeys.clear();
       _searchedCount = 0;
       _resultCount = 0;
       _totalSources = 0;
+      _currentLoadingSource = null;
     });
 
     try {
-      final sourcesJson =
-          await rust_api.getEnabledSources(dbPath: widget.dbPath);
-      if (!mounted) return;
+      final getEnabledSources = widget.getEnabledSourcesOverride ??
+          (String dbPath) => rust_api.getEnabledSources(dbPath: dbPath);
+      final sourcesJson = await getEnabledSources(widget.dbPath);
+      if (!mounted || seq != _searchSeq) return;
       final List<dynamic> sources = jsonDecode(sourcesJson);
 
       if (sources.isEmpty) {
@@ -93,49 +112,18 @@ class _ChangeSourceDialogState extends State<ChangeSourceDialog> {
 
       setState(() => _totalSources = sources.length);
 
-      const maxConcurrent = 8;
-      for (int batchStart = 0;
-          batchStart < sources.length;
-          batchStart += maxConcurrent) {
-        final batchEnd = (batchStart + maxConcurrent).clamp(0, sources.length);
-        final batch = sources.sublist(batchStart, batchEnd);
+      await _searchSourcesIncrementally(seq, sources);
+      if (!mounted || seq != _searchSeq) return;
 
-        final futures = batch.map((source) {
-          if (source == null)
-            return Future<List<Map<String, dynamic>>>.value(
-                <Map<String, dynamic>>[]);
-          return _searchSource(source as Map<String, dynamic>);
-        });
-
-        final batchResults = await Future.wait(futures);
-        if (!mounted) return;
-
-        for (final sourceResults in batchResults) {
-          for (final r in sourceResults) {
-            // BATCH-22 (F-W2A-031/032)：删调试 print('ZZZZ ...') 与硬编码
-            // `nameMatch=true && authorMatch=true` 死包裹（注释里写的"接受
-            // 所有搜索结果让用户决定用哪个源" — 意图是不做匹配过滤，本批把
-            // 包裹 if 解掉直接执行 body）。
-            final dedupKey = '${r['source_name']}_${r['source_id']}';
-            final exists = _results.any((existing) =>
-                '${existing['source_name']}_${existing['source_id']}' ==
-                dedupKey);
-            if (!exists) {
-              _results.add(r);
-            }
-          }
-          _searchedCount++;
+      setState(() {
+        _isSearching = false;
+        _currentLoadingSource = null;
+        if (_results.isEmpty) {
+          _errorMessage = '所有书源均未搜索到结果';
         }
-
-        setState(() => _resultCount = _results.length);
-      }
-
-      setState(() => _isSearching = false);
-      if (_results.isEmpty && mounted) {
-        setState(() => _errorMessage = '所有书源均未搜索到结果');
-      }
+      });
     } catch (e) {
-      if (mounted) {
+      if (mounted && seq == _searchSeq) {
         setState(() {
           _isSearching = false;
           _errorMessage = '搜索失败: $e';
@@ -144,18 +132,71 @@ class _ChangeSourceDialogState extends State<ChangeSourceDialog> {
     }
   }
 
+  Future<void> _searchSourcesIncrementally(
+      int seq, List<dynamic> sources) async {
+    const maxConcurrent = 8;
+    var nextIndex = 0;
+    final workerCount =
+        sources.length < maxConcurrent ? sources.length : maxConcurrent;
+
+    Future<void> worker() async {
+      while (mounted && seq == _searchSeq) {
+        final index = nextIndex++;
+        if (index >= sources.length) return;
+        final rawSource = sources[index];
+        if (rawSource is! Map<String, dynamic>) {
+          _markSourceSearched(seq, null, const []);
+          continue;
+        }
+
+        final sourceName = rawSource['name'] as String? ?? '未知书源';
+        final results = await _searchSource(rawSource);
+        if (!mounted || seq != _searchSeq) return;
+        _markSourceSearched(seq, sourceName, results);
+      }
+    }
+
+    await Future.wait<void>(
+      List.generate(workerCount, (_) => worker()),
+    );
+  }
+
+  void _markSourceSearched(
+    int seq,
+    String? sourceName,
+    List<Map<String, dynamic>> sourceResults,
+  ) {
+    if (!mounted || seq != _searchSeq) return;
+    setState(() {
+      _searchedCount++;
+      _currentLoadingSource = sourceName;
+      for (final r in sourceResults) {
+        // Keep the legacy one-result-per-source behavior while allowing each
+        // source to publish as soon as it completes.
+        final dedupKey = '${r['source_name']}_${r['source_id']}';
+        if (_resultKeys.add(dedupKey)) {
+          _results.add(r);
+        }
+      }
+      _resultCount = _results.length;
+    });
+  }
+
   Future<List<Map<String, dynamic>>> _searchSource(
       Map<String, dynamic> source) async {
     try {
-      setState(
-          () => _currentLoadingSource = source['name'] as String? ?? '未知书源');
-      final onlineJson = await rust_api
-          .searchWithSourceFromDbV2(
-            dbPath: widget.dbPath,
-            sourceId: source['id'] as String,
-            keyword: widget.bookName,
-          )
-          .timeout(const Duration(seconds: 20), onTimeout: () => '[]');
+      final searchWithSource = widget.searchWithSourceOverride ??
+          (String dbPath, String sourceId, String keyword) =>
+              rust_api.searchWithSourceFromDbV2(
+                dbPath: dbPath,
+                sourceId: sourceId,
+                keyword: keyword,
+              );
+      final onlineJson = await searchWithSource(
+        widget.dbPath,
+        source['id'] as String,
+        widget.bookName,
+      ).timeout(const Duration(seconds: 20), onTimeout: () => '[]');
       final List<dynamic> sourceResults = jsonDecode(onlineJson);
       // v2 may return [{"ok":false,"error":...}] for empty results
       if (sourceResults.length == 1 &&
@@ -300,20 +341,20 @@ class _ChangeSourceDialogState extends State<ChangeSourceDialog> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  if (_currentLoadingSource != null) ...[
-                    const SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '正在搜索: $_currentLoadingSource ...',
-                        style: theme.textTheme.bodySmall,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                  const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _currentLoadingSource == null
+                          ? '正在搜索 $_searchedCount/$_totalSources ...'
+                          : '已搜索 $_searchedCount/$_totalSources，最近完成: $_currentLoadingSource',
+                      style: theme.textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -399,7 +440,8 @@ class _ChangeSourceDialogState extends State<ChangeSourceDialog> {
                                     ),
                                     child: Text('当前',
                                         style: TextStyle(
-                                            fontSize: 11, color: context.al.success)),
+                                            fontSize: 11,
+                                            color: context.al.success)),
                                   ),
                               ],
                             ),

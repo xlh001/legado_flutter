@@ -1,0 +1,6 @@
+{"file":".trellis/spec/flutter-app/index.md","reason":"Flutter app verification expectations."}
+{"file":".trellis/spec/flutter-app/async-and-mounted.md","reason":"Check for post-await mounted handling and safeSetState compliance."}
+{"file":".trellis/spec/flutter-app/state-and-providers.md","reason":"Check Riverpod usage and invalidation/read-watch boundaries."}
+{"file":".trellis/spec/flutter-app/quality-and-anti-patterns.md","reason":"Check lint bar and forbidden patterns."}
+{"file":".trellis/spec/flutter-app/testing.md","reason":"Check that relevant Flutter tests follow project conventions."}
+{"file":".trellis/tasks/05-26-optimize-list-scrolling-and-source-switching/research/list-audit.md","reason":"Check implementation against audited list findings."}

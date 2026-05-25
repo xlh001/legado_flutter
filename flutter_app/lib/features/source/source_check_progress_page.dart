@@ -54,8 +54,10 @@ class _SourceCheckRowState {
         };
 
   bool get completed =>
-      totalLatencyMs != null || error != null ||
-      stageStatus.values.any((s) => s == _StageUiStatus.ok || s == _StageUiStatus.fail);
+      totalLatencyMs != null ||
+      error != null ||
+      stageStatus.values
+          .any((s) => s == _StageUiStatus.ok || s == _StageUiStatus.fail);
 }
 
 const List<String> _allStages = ['search', 'book_info', 'toc', 'content'];
@@ -79,6 +81,7 @@ class SourceCheckProgressPage extends ConsumerStatefulWidget {
 class _SourceCheckProgressPageState
     extends ConsumerState<SourceCheckProgressPage> {
   late final Map<String, _SourceCheckRowState> _rowsById;
+  late final List<_SourceCheckRowState> _rows;
   bool _running = true;
   String? _batchError;
 
@@ -94,6 +97,7 @@ class _SourceCheckProgressPageState
             stages: widget.args.stages,
           ),
     };
+    _rows = _rowsById.values.toList(growable: true);
     Future.microtask(_runBatch);
   }
 
@@ -132,22 +136,25 @@ class _SourceCheckProgressPageState
   void _mergeProgress(Map<String, dynamic> progress) {
     final id = progress['source_id'] as String?;
     if (id == null || id.isEmpty) return;
-    final row = _rowsById[id] ??
+    final existing = _rowsById[id];
+    final row = existing ??
         _SourceCheckRowState(
           id: id,
           name: (progress['source_name'] as String?) ?? '未知书源',
           stages: widget.args.stages,
         );
-    _rowsById[id] = row;
+    if (existing == null) {
+      _rowsById[id] = row;
+      _rows.add(row);
+    }
 
     final stages = progress['stages'];
     if (stages is List<dynamic>) {
       for (final stage in stages.whereType<Map<String, dynamic>>()) {
         final key = stage['stage'] as String?;
         if (key == null || key.isEmpty) continue;
-        row.stageStatus[key] = stage['ok'] == true
-            ? _StageUiStatus.ok
-            : _StageUiStatus.fail;
+        row.stageStatus[key] =
+            stage['ok'] == true ? _StageUiStatus.ok : _StageUiStatus.fail;
       }
     }
     final latency = progress['total_latency_ms'];
@@ -156,12 +163,11 @@ class _SourceCheckProgressPageState
     row.error = (progress['error'] as String?)?.trim();
   }
 
-  int get _completedCount =>
-      _rowsById.values.where((row) => row.completed).length;
+  int get _completedCount => _rows.where((row) => row.completed).length;
 
   @override
   Widget build(BuildContext context) {
-    final total = _rowsById.length;
+    final total = _rows.length;
     final completed = _completedCount;
     final hasBatchError = _batchError != null;
     return Scaffold(
@@ -206,10 +212,9 @@ class _SourceCheckProgressPageState
           const Divider(height: 1),
           Expanded(
             child: ListView.builder(
-              itemCount: _rowsById.length,
+              itemCount: _rows.length,
               itemBuilder: (context, index) {
-                final row = _rowsById.values.elementAt(index);
-                return _SourceCheckProgressTile(row: row);
+                return _SourceCheckProgressTile(row: _rows[index]);
               },
             ),
           ),
@@ -292,11 +297,16 @@ class _StageChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, color) = switch (status) {
-      _StageUiStatus.pending =>
-        (Icons.radio_button_unchecked, context.al.textSecondary),
+      _StageUiStatus.pending => (
+          Icons.radio_button_unchecked,
+          context.al.textSecondary
+        ),
       _StageUiStatus.ok => (Icons.check_circle, context.al.success),
       _StageUiStatus.fail => (Icons.error, context.al.destructive),
-      _StageUiStatus.skipped => (Icons.remove_circle_outline, context.al.disabled),
+      _StageUiStatus.skipped => (
+          Icons.remove_circle_outline,
+          context.al.disabled
+        ),
     };
     return Row(
       mainAxisSize: MainAxisSize.min,

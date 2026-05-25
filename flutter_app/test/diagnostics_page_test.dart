@@ -121,7 +121,7 @@ void main() {
   testWidgets('清空按钮弹窗确认并清空', (tester) async {
     final reader = FakeDiagnosticLogReader(
       fakeStats: const DiagnosticLogStats(
-        fileCount: 1, totalBytes: 500, newestModified: null),
+          fileCount: 1, totalBytes: 500, newestModified: null),
       fakeLines: [
         r'{"ts":"2026-05-25T10:00:00.000Z","level":"info","source":"flutter","category":"test.clear","message":"to be cleared"}',
       ],
@@ -146,8 +146,7 @@ void main() {
 
     // Dialog should appear.
     expect(find.text('清空日志'), findsOneWidget);
-    expect(
-        find.text('确定要清空所有诊断日志吗？此操作不可撤销。'), findsOneWidget);
+    expect(find.text('确定要清空所有诊断日志吗？此操作不可撤销。'), findsOneWidget);
 
     // Confirm — use the FilledButton in the dialog.
     await tester.tap(find.widgetWithText(FilledButton, '清空'));
@@ -235,5 +234,32 @@ void main() {
 
     // Page should still render.
     expect(find.text('诊断日志'), findsOneWidget);
+  });
+
+  testWidgets('诊断日志页窄屏按钮区不溢出', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(361, 794));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final reader = FakeDiagnosticLogReader(
+      fakeStats: const DiagnosticLogStats(
+          fileCount: 1, totalBytes: 200, newestModified: null),
+      fakeLines: [
+        r'{"ts":"2026-05-25T10:00:00.000Z","level":"info","source":"flutter","category":"test.overflow","message":"overflow check"}',
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: DiagnosticsPage(readerForTest: reader),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tester.takeException(), isNull);
+    expect(find.widgetWithText(OutlinedButton, '刷新'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '导出'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '清空'), findsOneWidget);
   });
 }

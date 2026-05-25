@@ -1,0 +1,6 @@
+{"file":".trellis/spec/flutter-app/index.md","reason":"Flutter app package overview and verification commands."}
+{"file":".trellis/spec/flutter-app/async-and-mounted.md","reason":"Async UI updates, mounted checks, and safeSetState conventions required for search/list refactors."}
+{"file":".trellis/spec/flutter-app/state-and-providers.md","reason":"Riverpod read/watch and provider invalidation conventions used by affected pages."}
+{"file":".trellis/spec/flutter-app/quality-and-anti-patterns.md","reason":"Project quality bar and forbidden Flutter patterns relevant to list and async changes."}
+{"file":".trellis/spec/flutter-app/testing.md","reason":"Widget/unit test conventions for verifying affected Flutter pages."}
+{"file":".trellis/tasks/05-26-optimize-list-scrolling-and-source-switching/research/list-audit.md","reason":"Task-specific list audit and prioritized findings."}

@@ -16,17 +16,20 @@ import 'src/rust/api.dart' as rust_api;
 import 'src/rust/frb_generated.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  final diagnosticLoggingEnabled = await loadDiagnosticLoggingEnabledFromDisk();
-  final diagnosticLogLevel = await loadDiagnosticLogLevelFromDisk();
-  await DiagnosticLog.init(
-    enabled: diagnosticLoggingEnabled,
-    minLevel: diagnosticLogLevel,
-  );
-
   await runZonedGuarded<Future<void>>(
-    _runAppStartup,
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      final diagnosticLoggingEnabled =
+          await loadDiagnosticLoggingEnabledFromDisk();
+      final diagnosticLogLevel = await loadDiagnosticLogLevelFromDisk();
+      await DiagnosticLog.init(
+        enabled: diagnosticLoggingEnabled,
+        minLevel: diagnosticLogLevel,
+      );
+
+      await _runAppStartup();
+    },
     (error, stack) {
       DiagnosticLog.error(
         'flutter.zone_error',
