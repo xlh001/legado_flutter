@@ -24,3 +24,6 @@ flutter_app/android/*.keystore
 flutter_app/android/*.jks
 
 build/
+
+/build
+/uihtml/
